@@ -211,8 +211,8 @@ export default function App() {
       
       {activeTab === 'dashboard' && (
         <div className="flex flex-col h-full bg-slate-950">
-          {/* Dashboard Header */}
-          <div className="px-6 py-4 border-b border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
+          {/* Dashboard Header - Added z-50 to ensure dropdowns appear over content */}
+          <div className="px-6 py-4 border-b border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4 relative z-50">
             <div className="flex items-center gap-4 flex-1 w-full">
               <div className="relative w-full max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
@@ -308,7 +308,7 @@ export default function App() {
 
           {/* Main Content Area */}
           <div className="flex-1 overflow-hidden p-6 relative z-0">
-            {viewMode === 'kanban' && (
+            {viewMode === 'kanban' ? (
                 <div className="flex gap-4 h-full min-w-max overflow-x-auto">
                 <KanbanColumn 
                     status={LeadStatus.COLD} 
@@ -335,11 +335,9 @@ export default function App() {
                     color="border-red-500"
                 />
                 </div>
-            )}
-            {viewMode === 'list' && (
+            ) : viewMode === 'list' ? (
                 <ListView leads={filteredLeads} onRowClick={setSelectedLead} />
-            )}
-            {viewMode === 'map' && (
+            ) : (
                 <MapView leads={filteredLeads} onLeadClick={setSelectedLead} />
             )}
           </div>
