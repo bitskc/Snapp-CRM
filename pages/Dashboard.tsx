@@ -9,25 +9,22 @@ import { LeadModal } from '../components/LeadModal';
 import { ImportModal } from '../components/ImportModal';
 import { Lead, AppSettings, Product, LeadStatus } from '../types';
 
-interface DashboardProps {
-    leads: Lead[];
-    settings: AppSettings | null;
-    products: Product[];
-    isLoading: boolean;
-    onRefresh: () => Promise<void>;
-    onLeadUpdate: (lead: Lead) => void;
-    onStatusChange: (leadId: string, status: LeadStatus) => void;
-}
+import { useCRM } from '../contexts/CRMContext';
 
-export const DashboardPage: React.FC<DashboardProps> = ({
-    leads,
-    settings,
-    products,
-    isLoading,
-    onRefresh,
-    onLeadUpdate,
-    onStatusChange
-}) => {
+export const DashboardPage: React.FC = () => {
+    const {
+        leads,
+        totalLeads,
+        settings,
+        products,
+        isLoading,
+        refreshData,
+        loadMore,
+        hasMore,
+        updateLead,
+        updateLeadStatus
+    } = useCRM();
+
     // Local state scoped to this page
     const [viewMode, setViewMode] = useState<'kanban' | 'list' | 'map'>('kanban');
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -99,9 +96,18 @@ export const DashboardPage: React.FC<DashboardProps> = ({
                             className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 transition-all placeholder-slate-600"
                         />
                     </div>
-                    <button onClick={onRefresh} className="p-2 text-slate-500 hover:text-brand-400 hover:bg-slate-900 rounded-lg transition-colors flex-shrink-0" title="Refresh">
+                    <button onClick={() => refreshData()} className="p-2 text-slate-500 hover:text-brand-400 hover:bg-slate-900 rounded-lg transition-colors flex-shrink-0" title="Refresh" aria-label="Refresh leads">
                         <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
                     </button>
+                    {hasMore && (
+                        <button
+                            onClick={loadMore}
+                            disabled={isLoading}
+                            className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md border border-slate-700 transition-all disabled:opacity-50"
+                        >
+                            {isLoading ? "Loading..." : `Load More (${leads.length}/${totalLeads})`}
+                        </button>
+                    )}
                 </div>
 
                 {/* Action Buttons */}
@@ -169,6 +175,8 @@ export const DashboardPage: React.FC<DashboardProps> = ({
                             onClick={() => setViewMode('kanban')}
                             className={`p-1.5 rounded transition-all ${viewMode === 'kanban' ? 'bg-slate-800 text-brand-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                             title="Kanban Board"
+                            aria-label="Switch to Kanban View"
+                            aria-pressed={viewMode === 'kanban'}
                         >
                             <Kanban size={18} />
                         </button>
@@ -176,6 +184,8 @@ export const DashboardPage: React.FC<DashboardProps> = ({
                             onClick={() => setViewMode('list')}
                             className={`p-1.5 rounded transition-all ${viewMode === 'list' ? 'bg-slate-800 text-brand-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                             title="List View"
+                            aria-label="Switch to List View"
+                            aria-pressed={viewMode === 'list'}
                         >
                             <List size={18} />
                         </button>
@@ -183,6 +193,8 @@ export const DashboardPage: React.FC<DashboardProps> = ({
                             onClick={() => setViewMode('map')}
                             className={`p-1.5 rounded transition-all ${viewMode === 'map' ? 'bg-slate-800 text-brand-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                             title="Map View"
+                            aria-label="Switch to Map View"
+                            aria-pressed={viewMode === 'map'}
                         >
                             <MapIcon size={18} />
                         </button>
@@ -196,7 +208,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({
                     <KanbanBoard
                         leads={filteredLeads}
                         onLeadClick={setSelectedLead}
-                        onLeadStatusChange={onStatusChange}
+                        onLeadStatusChange={updateLeadStatus}
                     />
                 )}
                 {viewMode === 'list' && (
@@ -210,11 +222,8 @@ export const DashboardPage: React.FC<DashboardProps> = ({
             {selectedLead && settings && (
                 <LeadModal
                     lead={selectedLead}
-                    settings={settings}
-                    products={products}
                     isOpen={!!selectedLead}
                     onClose={() => setSelectedLead(null)}
-                    onUpdate={onLeadUpdate}
                     onNext={handleNextLead}
                     onPrev={handlePrevLead}
                     hasNext={hasNext}
@@ -226,7 +235,6 @@ export const DashboardPage: React.FC<DashboardProps> = ({
                 <ImportModal
                     isOpen={isImportModalOpen}
                     onClose={() => setIsImportModalOpen(false)}
-                    onImportComplete={onRefresh}
                 />
             )}
 

@@ -1,15 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
+import * as React from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Plus, Loader2, Search } from 'lucide-react';
 import { ChatMessage, Lead } from '../types';
 import { findLeadsWithAI } from '../services/geminiService';
 import { saveLead } from '../services/crmService';
+import { useCRM } from '../contexts/CRMContext';
 
-interface LeadFinderProps {
+export interface LeadFinderProps {
   messages: ChatMessage[];
   onMessagesChange: React.Dispatch<React.SetStateAction<ChatMessage[] | any[]>>;
   query: string;
   onQueryChange: (query: string) => void;
-  onLeadAdded: () => void;
 }
 
 export const LeadFinder: React.FC<LeadFinderProps> = ({
@@ -17,8 +18,8 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
   onMessagesChange,
   query,
   onQueryChange,
-  onLeadAdded
 }) => {
+  const { refreshData, addToast } = useCRM();
   // Local UI state
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('Thinking...');
@@ -83,53 +84,54 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
 
     } catch (error) {
       onMessagesChange(prev => {
-        return [...prev, { id: Date.now().toString(), role: 'model', text: 'Sorry, I encountered an error while searching. Please check your API key and try again.' }];
+        return [...prev, { id: Date.now().toString(), role: 'model', text: 'Sorry, I encountered an error while searching for leads. This might be a temporary issue. Please try again in a moment.' }];
       });
     } finally {
       setIsLoading(false);
     }
   };
 
+  const [addedLeadIds, setAddedLeadIds] = useState<Set<string>>(new Set());
+
   const handleAddLead = async (lead: Lead, msgId: string) => {
-    await saveLead(lead);
-    onLeadAdded(); // Refresh App Data
-    const btn = document.getElementById(`btn-${lead.id}`);
-    if (btn) {
-      btn.innerText = "Added";
-      btn.setAttribute('disabled', 'true');
-      btn.className = "text-xs font-medium text-green-400 cursor-default";
+    try {
+      await saveLead(lead);
+      await refreshData();
+      addToast(`Added ${lead.companyName} to CRM`, "success");
+      setAddedLeadIds(prev => new Set(prev).add(lead.id as string));
+    } catch (e) {
+      addToast(`Failed to add ${lead.companyName}`, "error");
     }
   };
 
   const handleBulkAdd = async (leads: Lead[]) => {
     setIsImporting(true);
     try {
-      // Process sequentially to be safe with DB limits
-      for (const lead of leads) {
-        await saveLead(lead);
-
-        // Visual update for individual cards
-        const btn = document.getElementById(`btn-${lead.id}`);
-        if (btn) {
-          btn.innerText = "Added";
-          btn.setAttribute('disabled', 'true');
-          btn.className = "text-xs font-medium text-green-400 cursor-default";
-        }
+      let successCount = 0;
+      // Process in batches for performance but stability
+      const batchSize = 10;
+      for (let i = 0; i < leads.length; i += batchSize) {
+        const batch = leads.slice(i, i + batchSize);
+        await Promise.all(batch.map(async (l) => {
+          await saveLead(l);
+          setAddedLeadIds(prev => new Set(prev).add(l.id as string));
+          successCount++;
+        }));
       }
 
-      // Clear selection after import
       setSelectedLeads([]);
-      onLeadAdded(); // Refresh App Data
+      await refreshData();
+      addToast(`Successfully added ${successCount} leads`, "success");
 
-      // Add a success message
       onMessagesChange(prev => [...prev, {
         id: Date.now().toString(),
         role: 'model',
-        text: `Successfully added ${leads.length} leads to your CRM!`
+        text: `Successfully added ${successCount} leads to your CRM!`
       }]);
 
     } catch (e) {
       console.error("Bulk add error", e);
+      addToast("Failed to add some leads", "error");
     } finally {
       setIsImporting(false);
     }
@@ -258,9 +260,12 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
                           <button
                             id={`btn-${lead.id}`}
                             onClick={() => handleAddLead(lead as Lead, msg.id)}
-                            className="text-xs font-medium text-slate-400 hover:text-white transition-colors"
+                            disabled={addedLeadIds.has(lead.id as string)}
+                            className={`text-xs font-medium transition-colors ${addedLeadIds.has(lead.id as string)
+                              ? "text-green-400 cursor-default"
+                              : "text-slate-400 hover:text-white"}`}
                           >
-                            Add Single
+                            {addedLeadIds.has(lead.id as string) ? "Added" : "Add Single"}
                           </button>
                         </div>
                       </div>

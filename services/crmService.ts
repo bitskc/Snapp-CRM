@@ -44,26 +44,27 @@ const geocodeLocation = async (location: string): Promise<{ lat: number, lon: nu
 
 // --- Leads ---
 
-export const fetchLeads = async (): Promise<Lead[]> => {
+export const fetchLeads = async (page: number = 0, pageSize: number = 50): Promise<{ leads: Lead[], totalCount: number }> => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from('leads')
     .select(`
       *,
       notes (*),
       lead_products (product_id)
-    `)
+    `, { count: 'exact' })
     .eq('user_id', user.id)
+    .range(page * pageSize, (page + 1) * pageSize - 1)
     .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Error fetching leads:', error);
-    return [];
+    return { leads: [], totalCount: 0 };
   }
 
-  return (data as any[]).map(row => ({
+  const leads = (data as any[]).map(row => ({
     id: row.id,
     user_id: row.user_id,
     companyName: row.company_name,
@@ -89,6 +90,8 @@ export const fetchLeads = async (): Promise<Lead[]> => {
     })),
     productIds: (row.lead_products || []).map((lp: any) => lp.product_id)
   }));
+
+  return { leads, totalCount: count || 0 };
 };
 
 export const saveLead = async (lead: Lead): Promise<Lead> => {

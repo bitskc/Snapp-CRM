@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
+import * as React from 'react';
+import { useState } from 'react';
 import { Upload, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { parseImportData } from '../services/geminiService';
 import { saveLead } from '../services/crmService';
 import { Lead } from '../types';
+import { useCRM } from '../contexts/CRMContext';
+import { useAuth } from '../contexts/AuthContext';
 
-interface ImportModalProps {
+export interface ImportModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onImportComplete: () => void;
 }
 
-export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImportComplete }) => {
+export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
+    const { refreshData, addToast } = useCRM();
+    const { user } = useAuth();
     const [dataText, setDataText] = useState('');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
@@ -31,8 +35,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             } else {
                 setParsedLeads(leads);
             }
-        } catch (e) {
-            setError("Failed to analyze data via AI. Please try again.");
+        } catch (e: any) {
+            setError(e.message || "Failed to analyze data via AI. Please try again.");
             console.error(e);
         } finally {
             setIsAnalyzing(false);
@@ -40,6 +44,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     };
 
     const handleImport = async () => {
+        if (!user) return;
         setIsImporting(true);
         try {
             let importedCount = 0;
@@ -47,6 +52,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 // Create full lead object
                 const newLead: Lead = {
                     id: Math.random().toString(36).substr(2, 9),
+                    user_id: user.id,
                     companyName: leadData.companyName || 'Unknown Company',
                     description: leadData.description || '',
                     location: leadData.location || '',
@@ -63,10 +69,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 await saveLead(newLead);
                 importedCount++;
             }
-            onImportComplete();
+            await refreshData();
+            addToast(`Successfully imported ${importedCount} leads`, "success");
             onClose();
         } catch (e) {
             setError("Error saving leads to database.");
+            addToast("Import failed", "error");
             console.error(e);
         } finally {
             setIsImporting(false);

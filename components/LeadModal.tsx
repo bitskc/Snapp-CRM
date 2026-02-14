@@ -1,16 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import * as React from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Phone, Mail, MapPin, Globe, Loader2, Sparkles, Send, Edit2, Save, ChevronLeft, ChevronRight, Copy, Tag, Stethoscope, Gauge, ArrowRight, Share2, Linkedin, Facebook, Twitter, Youtube, Video } from 'lucide-react';
 import { Lead, LeadStatus, Note, AppSettings, Product } from '../types';
-import { addNoteToLead, saveLead } from '../services/crmService';
+import { addNoteToLead } from '../services/crmService';
 import { generateCallScript, generateEmail, analyzeLead, executePrescription, generateSocialPost } from '../services/geminiService';
+import { useCRM } from '../contexts/CRMContext';
 
 interface LeadModalProps {
   lead: Lead;
-  settings: AppSettings;
-  products: Product[];
   isOpen: boolean;
   onClose: () => void;
-  onUpdate: (updatedLead: Lead) => void;
   onNext?: () => void;
   onPrev?: () => void;
   hasNext?: boolean;
@@ -18,9 +17,11 @@ interface LeadModalProps {
 }
 
 export const LeadModal: React.FC<LeadModalProps> = ({
-  lead, settings, products, isOpen, onClose, onUpdate, onNext, onPrev, hasNext, hasPrev
+  lead, isOpen, onClose, onNext, onPrev, hasNext, hasPrev
 }) => {
+  const { settings, products, updateLead, addToast } = useCRM();
   const [activeLead, setActiveLead] = useState<Lead>(lead);
+  const [hasChanges, setHasChanges] = useState(false);
   const [newNote, setNewNote] = useState('');
   const [generatedContent, setGeneratedContent] = useState<{ type: 'script' | 'email' | 'social', content: string, subject?: string, rationale?: string } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -40,6 +41,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   // Sync state when prop changes
   useEffect(() => {
     setActiveLead(lead);
+    setHasChanges(false);
     setGeneratedContent(null);
     setIsEditing(false);
     setActiveRightTab('notes');
@@ -48,10 +50,9 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
   // Wrapper for closing to ensure save happens
   const handleClose = async () => {
-    // Autosave current state before closing
-    if (activeLead !== lead) {
-      await saveLead(activeLead);
-      onUpdate(activeLead);
+    // Autosave current state before closing IF changes were made
+    if (hasChanges) {
+      await updateLead(activeLead);
     }
     onClose();
   };
@@ -83,9 +84,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   const handleStatusChange = async (newStatus: LeadStatus) => {
     const updated = { ...activeLead, status: newStatus };
     setActiveLead(updated);
-    // Optimistic update handled by parent, but we save locally too just in case
-    await saveLead(updated);
-    onUpdate(updated);
+    await updateLead(updated);
   };
 
   const handleToggleProduct = async (productId: string) => {
@@ -96,8 +95,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
     const updated = { ...activeLead, productIds: newIds };
     setActiveLead(updated);
-    await saveLead(updated);
-    onUpdate(updated);
+    await updateLead(updated);
   };
 
   const handleAddNote = async () => {
@@ -107,8 +105,12 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       const note = await addNoteToLead(activeLead.id, newNote);
       const updated = { ...activeLead, notes: [...activeLead.notes, note] };
       setActiveLead(updated);
-      onUpdate(updated);
+      await updateLead(updated);
+      setHasChanges(false);
       setNewNote('');
+    } catch (e) {
+      console.error("Failed to add note", e);
+      addToast("Failed to add note", "error");
     } finally {
       setIsSaving(false);
     }
@@ -162,8 +164,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       const analysis = await analyzeLead(activeLead, settings);
       const updated = { ...activeLead, aiAnalysis: analysis };
       setActiveLead(updated);
-      await saveLead(updated);
-      onUpdate(updated);
+      await updateLead(updated);
+      setHasChanges(false);
     } finally {
       setIsAnalyzing(false);
     }
@@ -189,8 +191,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   const handleSaveChanges = async () => {
     setIsSaving(true);
     try {
-      await saveLead(activeLead);
-      onUpdate(activeLead);
+      await updateLead(activeLead);
       setIsEditing(false);
     } finally {
       setIsSaving(false);
@@ -199,6 +200,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
   const handleInputChange = (field: keyof Lead, value: string) => {
     setActiveLead(prev => ({ ...prev, [field]: value }));
+    setHasChanges(true);
   };
 
   // Swipe handlers
@@ -225,8 +227,22 @@ export const LeadModal: React.FC<LeadModalProps> = ({
     window.open(`mailto:${activeLead.email || ''}?subject=${subject}&body=${body}`);
   };
 
+  const getLeadStatusColorClasses = (colorName: string) => {
+    const colorMap: Record<string, string> = {
+      blue: 'bg-blue-900/50 text-blue-300 border-blue-800',
+      green: 'bg-green-900/50 text-green-300 border-green-800',
+      yellow: 'bg-yellow-900/50 text-yellow-300 border-yellow-800',
+      red: 'bg-red-900/50 text-red-300 border-red-800',
+      purple: 'bg-purple-900/50 text-purple-300 border-purple-800',
+      orange: 'bg-orange-900/50 text-orange-300 border-orange-800',
+      pink: 'bg-pink-900/50 text-pink-300 border-pink-800',
+      gray: 'bg-slate-900/50 text-slate-300 border-slate-800',
+    };
+    return colorMap[colorName] || 'bg-slate-900/50 text-slate-300 border-slate-800';
+  };
+
   const currentStatusConfig = settings.statuses.find(s => s.id === activeLead.status) || settings.statuses[0];
-  const statusColorClass = currentStatusConfig ? `bg-${currentStatusConfig.color}-900/50 text-${currentStatusConfig.color}-300 border-${currentStatusConfig.color}-800` : 'bg-slate-800 text-slate-400';
+  const statusColorClass = currentStatusConfig ? getLeadStatusColorClasses(currentStatusConfig.color) : 'bg-slate-800 text-slate-400';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
@@ -235,12 +251,20 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
       {/* Navigation Arrows */}
       {hasPrev && (
-        <button onClick={(e) => { e.stopPropagation(); handleClose().then(() => onPrev && onPrev()); }} className="hidden md:block absolute left-4 text-slate-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all z-50">
+        <button
+          onClick={(e) => { e.stopPropagation(); handleClose().then(() => onPrev && onPrev()); }}
+          className="hidden md:block absolute left-4 text-slate-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all z-50"
+          aria-label="Previous lead"
+        >
           <ChevronLeft size={48} />
         </button>
       )}
       {hasNext && (
-        <button onClick={(e) => { e.stopPropagation(); handleClose().then(() => onNext && onNext()); }} className="hidden md:block absolute right-4 text-slate-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all z-50">
+        <button
+          onClick={(e) => { e.stopPropagation(); handleClose().then(() => onNext && onNext()); }}
+          className="hidden md:block absolute right-4 text-slate-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all z-50"
+          aria-label="Next lead"
+        >
           <ChevronRight size={48} />
         </button>
       )}
@@ -275,10 +299,15 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                 onClick={() => isEditing ? handleSaveChanges() : setIsEditing(true)}
                 className="text-slate-400 hover:text-brand-400 p-1"
                 title={isEditing ? "Save" : "Edit"}
+                aria-label={isEditing ? "Save lead details" : "Edit lead details"}
               >
                 {isEditing ? <Save size={20} className="text-brand-400" /> : <Edit2 size={20} />}
               </button>
-              <button onClick={handleClose} className="text-slate-400 hover:text-white p-1">
+              <button
+                onClick={handleClose}
+                className="text-slate-400 hover:text-white p-1"
+                aria-label="Close modal"
+              >
                 <X size={24} />
               </button>
             </div>
@@ -493,6 +522,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                     <button
                       onClick={() => navigator.clipboard.writeText(generatedContent.content)}
                       className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm hover:bg-slate-600"
+                      aria-label="Copy email content to clipboard"
+                      title="Copy email content"
                     >
                       <Copy size={16} />
                     </button>
@@ -541,6 +572,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                   onClick={handleAddNote}
                   disabled={isSaving || !newNote.trim()}
                   className="absolute bottom-3 right-3 p-1.5 bg-brand-600 text-white rounded-md hover:bg-brand-700 disabled:opacity-50 transition-colors"
+                  aria-label="Add note"
                 >
                   {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 </button>
