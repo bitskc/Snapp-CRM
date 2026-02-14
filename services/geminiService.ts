@@ -248,19 +248,59 @@ export const executePrescription = async (
 }
 
 /**
+ * Normalizes a single lead object from AI response, handling both
+ * camelCase and snake_case field names.
+ */
+const normalizeLead = (raw: any): Partial<Lead> | null => {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const companyName = raw.companyName || raw.company_name || raw.name || raw.company || '';
+  if (!companyName) return null;
+
+  return {
+    companyName,
+    contactName: raw.contactName || raw.contact_name || raw.contact || undefined,
+    email: raw.email || raw.email_address || undefined,
+    phone: raw.phone || raw.phone_number || raw.telephone || undefined,
+    website: raw.website || raw.url || raw.web || undefined,
+    location: raw.location || raw.address || [raw.city, raw.state].filter(Boolean).join(', ') || undefined,
+    description: raw.description || raw.desc || raw.about || raw.info || undefined,
+  };
+};
+
+/**
+ * Extracts a lead array from an AI response that may be a direct array
+ * or wrapped in an object (e.g. { "leads": [...] }).
+ */
+const extractLeadArray = (data: any): any[] => {
+  if (Array.isArray(data)) return data;
+
+  if (data && typeof data === 'object') {
+    for (const key of ['leads', 'data', 'results', 'items', 'companies']) {
+      if (Array.isArray(data[key])) return data[key];
+    }
+    if (data.companyName || data.company_name || data.name) {
+      return [data];
+    }
+  }
+
+  return [];
+};
+
+/**
  * Parses raw text/CSV data into structured leads.
  */
 export const parseImportData = async (rawData: string): Promise<Partial<Lead>[]> => {
   const prompt = `
         Analyze the following raw text data which may be CSV, pasted spreadsheet rows, or unstructured text.
         Extract a list of business leads from it.
-        
+
         Raw Data:
         """
-        ${rawData.substring(0, 10000)} 
+        ${rawData.substring(0, 10000)}
         """
-        
-        Map the data into these fields:
+
+        Map the data into these fields using exactly these camelCase names:
         - companyName (required, use "Unknown" if missing)
         - contactName
         - email
@@ -268,12 +308,16 @@ export const parseImportData = async (rawData: string): Promise<Partial<Lead>[]>
         - website
         - location (city/state or address)
         - description (what they do)
-        
-        Return a JSON array of objects.
+
+        Return a JSON array of objects. Do NOT wrap in an outer object.
       `;
 
   try {
-    return await callGateway('parse_import', { prompt });
+    const result = await callGateway('parse_import', { prompt });
+    const rawLeads = extractLeadArray(result);
+    return rawLeads
+      .map(normalizeLead)
+      .filter((lead): lead is Partial<Lead> => lead !== null);
   } catch (error) {
     console.error("Error parsing import data:", error);
     throw error;

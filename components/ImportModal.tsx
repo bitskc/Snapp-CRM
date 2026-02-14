@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Upload, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { parseImportData } from '../services/geminiService';
 import { saveLead } from '../services/crmService';
@@ -13,7 +13,7 @@ export interface ImportModalProps {
 }
 
 export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
-    const { refreshData, addToast } = useCRM();
+    const { refreshData, addToast, settings } = useCRM();
     const { user } = useAuth();
     const [dataText, setDataText] = useState('');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -21,7 +21,22 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
     const [parsedLeads, setParsedLeads] = useState<Partial<Lead>[]>([]);
     const [error, setError] = useState<string | null>(null);
 
+    const resetState = useCallback(() => {
+        setDataText('');
+        setParsedLeads([]);
+        setError(null);
+        setIsAnalyzing(false);
+        setIsImporting(false);
+    }, []);
+
+    const handleClose = useCallback(() => {
+        resetState();
+        onClose();
+    }, [onClose, resetState]);
+
     if (!isOpen) return null;
+
+    const defaultStatus = settings?.statuses?.[0]?.id || 'COLD';
 
     const handleAnalyze = async () => {
         if (!dataText.trim()) return;
@@ -46,10 +61,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
     const handleImport = async () => {
         if (!user) return;
         setIsImporting(true);
+        setError(null);
+        let importedCount = 0;
+        let failedCount = 0;
         try {
-            let importedCount = 0;
             for (const leadData of parsedLeads) {
-                // Create full lead object
                 const newLead: Lead = {
                     id: Math.random().toString(36).substr(2, 9),
                     user_id: user.id,
@@ -57,21 +73,32 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                     description: leadData.description || '',
                     location: leadData.location || '',
                     website: leadData.website,
-                    status: 'COLD',
+                    status: defaultStatus,
                     source: 'MANUAL',
-                    notes: leadData.notes || [],
+                    notes: [],
                     productIds: [],
                     createdAt: new Date().toISOString(),
                     contactName: leadData.contactName,
                     email: leadData.email,
                     phone: leadData.phone
                 };
-                await saveLead(newLead);
-                importedCount++;
+                try {
+                    await saveLead(newLead);
+                    importedCount++;
+                } catch (e) {
+                    failedCount++;
+                    console.error(`Failed to import lead "${newLead.companyName}":`, e);
+                }
             }
             await refreshData();
-            addToast(`Successfully imported ${importedCount} leads`, "success");
-            onClose();
+            if (failedCount === 0) {
+                addToast(`Successfully imported ${importedCount} leads`, "success");
+            } else if (importedCount > 0) {
+                addToast(`Imported ${importedCount} leads, ${failedCount} failed`, "info");
+            } else {
+                addToast(`All ${failedCount} leads failed to import`, "error");
+            }
+            handleClose();
         } catch (e) {
             setError("Error saving leads to database.");
             addToast("Import failed", "error");
@@ -89,7 +116,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                     <h2 className="text-xl font-semibold text-slate-100 flex items-center gap-2">
                         <Upload className="text-brand-400" /> Import Leads
                     </h2>
-                    <button onClick={onClose} className="text-slate-500 hover:text-slate-300">
+                    <button onClick={handleClose} className="text-slate-500 hover:text-slate-300">
                         <X size={24} />
                     </button>
                 </div>
@@ -113,7 +140,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                             <div className="flex items-center justify-between">
                                 <h3 className="text-lg font-medium text-slate-200">Parsed {parsedLeads.length} Leads</h3>
                                 <button
-                                    onClick={() => setParsedLeads([])}
+                                    onClick={() => { setParsedLeads([]); setError(null); }}
                                     className="text-xs text-slate-500 hover:text-brand-400 underline"
                                 >
                                     Start Over

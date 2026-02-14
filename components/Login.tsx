@@ -90,7 +90,7 @@ export const Login: React.FC = () => {
                                         id="email"
                                         name="email"
                                         type="email"
-                                        autoComplete="email"
+                                        autoComplete={authMode === 'signin' ? "username" : "email"}
                                         required
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
@@ -112,7 +112,7 @@ export const Login: React.FC = () => {
                                         id="password"
                                         name="password"
                                         type="password"
-                                        autoComplete={authMode === 'signup' ? "new-password" : "current-password"}
+                                        autoComplete={authMode === 'signin' ? "current-password" : "new-password"}
                                         required
                                         minLength={6}
                                         value={password}
