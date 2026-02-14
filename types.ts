@@ -16,11 +16,14 @@ export interface Note {
 
 export interface Product {
   id: string;
+  user_id: string;
   name: string;
   description: string;
 }
 
 export interface AppSettings {
+  id?: string;
+  user_id?: string;
   companyName: string;
   companyDescription: string;
   aboutMe: string; // User persona/style
@@ -37,6 +40,7 @@ export interface LeadAIAnalysis {
 
 export interface Lead {
   id: string;
+  user_id: string;
   companyName: string;
   contactName?: string;
   email?: string;
@@ -51,6 +55,8 @@ export interface Lead {
   source: 'MANUAL' | 'AI_FINDER';
   productIds: string[]; // IDs of products interested/assigned
   aiAnalysis?: LeadAIAnalysis;
+  matchScore?: number;
+  matchReason?: string;
   createdAt: string;
 }
 

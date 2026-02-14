@@ -1,8 +1,33 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Lead, LeadStatus, AppSettings, Product, LeadAIAnalysis } from '../types';
 
-// Initialize the Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const API_KEY = process.env.API_KEY || '';
+
+// Lazy initialization - only create client when actually needed
+let aiClient: GoogleGenAI | null = null;
+
+function getAIClient(): GoogleGenAI {
+  if (!API_KEY) {
+    throw new Error(
+      '⚠️ Gemini API key not found!\n\n' +
+      'Please create a .env.local file in the project root and add:\n' +
+      'GEMINI_API_KEY=your_api_key_here\n\n' +
+      'Get your API key from: https://aistudio.google.com/apikey'
+    );
+  }
+
+  if (!aiClient) {
+    aiClient = new GoogleGenAI({ apiKey: API_KEY });
+  }
+
+  return aiClient;
+}
+
+const ai = {
+  get models() {
+    return getAIClient().models;
+  }
+};
 
 /**
  * Uses Gemini with Google Search Grounding to find leads.
@@ -15,6 +40,9 @@ export const findLeadsWithAI = async (query: string): Promise<Partial<Lead>[]> =
       You are a sales research assistant.
       Return a list of real companies found using Google Search.
       Try to find their location, potential contact info if publicly available, and a description of what they do.
+      
+      CRITICAL: For each company, calculate a "matchScore" (0-100) based on how well they fit the user's query, and write a concise "matchReason" explaining why they are a good fit.
+      
       Do not make up data. If you can't find specific fields, leave them blank.`,
       config: {
         tools: [{ googleSearch: {} }],
@@ -31,8 +59,10 @@ export const findLeadsWithAI = async (query: string): Promise<Partial<Lead>[]> =
               contactName: { type: Type.STRING, description: "Name of a potential contact person if found" },
               phone: { type: Type.STRING },
               email: { type: Type.STRING },
+              matchScore: { type: Type.INTEGER, description: "0-100 score of relevance to the query" },
+              matchReason: { type: Type.STRING, description: "Why this company fits the request" }
             },
-            required: ["companyName", "description"],
+            required: ["companyName", "description", "matchScore", "matchReason"],
           },
         },
       },
@@ -42,7 +72,7 @@ export const findLeadsWithAI = async (query: string): Promise<Partial<Lead>[]> =
     if (!text) return [];
 
     const rawLeads = JSON.parse(text);
-    
+
     // Map to our internal Lead type structure
     return rawLeads.map((l: any) => ({
       ...l,
@@ -65,9 +95,9 @@ export const findLeadsWithAI = async (query: string): Promise<Partial<Lead>[]> =
  */
 export const generateCallScript = async (lead: Lead, settings: AppSettings, relevantProducts: Product[]): Promise<string> => {
   try {
-    const productContext = relevantProducts.length > 0 
-        ? `The lead is interested in: ${relevantProducts.map(p => `${p.name} (${p.description})`).join(', ')}.`
-        : `No specific product selected, pitch the general company solution: ${settings.companyDescription}`;
+    const productContext = relevantProducts.length > 0
+      ? `The lead is interested in: ${relevantProducts.map(p => `${p.name} (${p.description})`).join(', ')}.`
+      : `No specific product selected, pitch the general company solution: ${settings.companyDescription}`;
 
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -102,13 +132,13 @@ export const generateCallScript = async (lead: Lead, settings: AppSettings, rele
 /**
  * Generates a cold or follow-up email.
  */
-export const generateEmail = async (lead: Lead, type: 'COLD' | 'FOLLOW_UP', settings: AppSettings, relevantProducts: Product[]): Promise<{subject: string, body: string}> => {
+export const generateEmail = async (lead: Lead, type: 'COLD' | 'FOLLOW_UP', settings: AppSettings, relevantProducts: Product[]): Promise<{ subject: string, body: string }> => {
   try {
-    const productContext = relevantProducts.length > 0 
-        ? `Focus the email on these products: ${relevantProducts.map(p => `${p.name} - ${p.description}`).join('; ')}.`
-        : `Focus on the general value proposition of ${settings.companyName}: ${settings.companyDescription}`;
+    const productContext = relevantProducts.length > 0
+      ? `Focus the email on these products: ${relevantProducts.map(p => `${p.name} - ${p.description}`).join('; ')}.`
+      : `Focus on the general value proposition of ${settings.companyName}: ${settings.companyDescription}`;
 
-    const prompt = type === 'COLD' 
+    const prompt = type === 'COLD'
       ? `Write a cold email to ${lead.companyName} from ${settings.companyName}.
          My Style: ${settings.aboutMe}
          Prospect Info: ${lead.description}
@@ -147,27 +177,27 @@ export const generateEmail = async (lead: Lead, type: 'COLD' | 'FOLLOW_UP', sett
  * Generates a product description.
  */
 export const generateProductDescription = async (productName: string, companyDesc: string): Promise<string> => {
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: `Write a concise, compelling 1-sentence sales description for a product named "${productName}".
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Write a concise, compelling 1-sentence sales description for a product named "${productName}".
             The company is: "${companyDesc}".
             Focus on benefits.`
-        });
-        return response.text || "";
-    } catch (e) {
-        return "";
-    }
+    });
+    return response.text || "";
+  } catch (e) {
+    return "";
+  }
 };
 
 /**
  * Analyzes the lead and provides a score, reasoning, and next action.
  */
 export const analyzeLead = async (lead: Lead, settings: AppSettings): Promise<LeadAIAnalysis> => {
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: `Analyze this sales lead compatibility for my company.
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Analyze this sales lead compatibility for my company.
             
             My Company: ${settings.companyName}
             My Description: ${settings.companyDescription}
@@ -184,55 +214,55 @@ export const analyzeLead = async (lead: Lead, settings: AppSettings): Promise<Le
             2. reasoning (string): Why this score?
             3. nextAction (string): The single most effective thing I should do next.
             `,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        score: { type: Type.INTEGER },
-                        reasoning: { type: Type.STRING },
-                        nextAction: { type: Type.STRING }
-                    }
-                }
-            }
-        });
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            score: { type: Type.INTEGER },
+            reasoning: { type: Type.STRING },
+            nextAction: { type: Type.STRING }
+          }
+        }
+      }
+    });
 
-        const json = JSON.parse(response.text || "{}");
-        return {
-            score: json.score || 0,
-            reasoning: json.reasoning || "Insufficient data to analyze.",
-            nextAction: json.nextAction || "Gather more information.",
-            lastUpdated: new Date().toISOString()
-        };
-    } catch (error) {
-        console.error("Error analyzing lead:", error);
-        return {
-            score: 0,
-            reasoning: "Error analyzing lead.",
-            nextAction: "Try again later.",
-            lastUpdated: new Date().toISOString()
-        };
-    }
+    const json = JSON.parse(response.text || "{}");
+    return {
+      score: json.score || 0,
+      reasoning: json.reasoning || "Insufficient data to analyze.",
+      nextAction: json.nextAction || "Gather more information.",
+      lastUpdated: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error("Error analyzing lead:", error);
+    return {
+      score: 0,
+      reasoning: "Error analyzing lead.",
+      nextAction: "Try again later.",
+      lastUpdated: new Date().toISOString()
+    };
+  }
 };
 
 /**
  * Executes the prescribed action by generating appropriate content.
  */
 export const executePrescription = async (
-    lead: Lead, 
-    settings: AppSettings, 
-    relevantProducts: Product[],
-    nextAction: string,
-    userInstructions: string
+  lead: Lead,
+  settings: AppSettings,
+  relevantProducts: Product[],
+  nextAction: string,
+  userInstructions: string
 ): Promise<{ type: 'email' | 'script', content: string, subject?: string }> => {
-    try {
-        const productContext = relevantProducts.length > 0 
-            ? `Relevant Products: ${relevantProducts.map(p => `${p.name} (${p.description})`).join(', ')}.`
-            : `Company Solution: ${settings.companyDescription}`;
+  try {
+    const productContext = relevantProducts.length > 0
+      ? `Relevant Products: ${relevantProducts.map(p => `${p.name} (${p.description})`).join(', ')}.`
+      : `Company Solution: ${settings.companyDescription}`;
 
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: `
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `
                 Context:
                 My Company: ${settings.companyName}
                 My Style: ${settings.aboutMe}
@@ -254,32 +284,87 @@ export const executePrescription = async (
                   "content": "string (the email body or the script formatted in markdown)"
                 }
             `,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        type: { type: Type.STRING, enum: ["EMAIL", "SCRIPT"] },
-                        subject: { type: Type.STRING },
-                        content: { type: Type.STRING }
-                    }
-                }
-            }
-        });
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            type: { type: Type.STRING, enum: ["EMAIL", "SCRIPT"] },
+            subject: { type: Type.STRING },
+            content: { type: Type.STRING }
+          }
+        }
+      }
+    });
 
-        const json = JSON.parse(response.text || "{}");
-        
-        return {
-            type: (json.type || "SCRIPT").toLowerCase() as 'email' | 'script',
-            content: json.content || "Could not generate content.",
-            subject: json.subject
-        };
+    const json = JSON.parse(response.text || "{}");
 
-    } catch (error) {
-        console.error("Error executing prescription:", error);
-        return {
-            type: 'script',
-            content: "Error generating action content."
-        };
-    }
+    return {
+      type: (json.type || "SCRIPT").toLowerCase() as 'email' | 'script',
+      content: json.content || "Could not generate content.",
+      subject: json.subject
+    };
+
+  } catch (error) {
+    console.error("Error executing prescription:", error);
+    return {
+      type: 'script',
+      content: "Error generating action content."
+    };
+  }
 }
+
+/**
+ * Parses raw text/CSV data into structured leads.
+ */
+export const parseImportData = async (rawData: string): Promise<Partial<Lead>[]> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `
+        Analyze the following raw text data which may be CSV, pasted spreadsheet rows, or unstructured text.
+        Extract a list of business leads from it.
+        
+        Raw Data:
+        """
+        ${rawData.substring(0, 10000)} 
+        """
+        
+        Map the data into these fields:
+        - companyName (required, use "Unknown" if missing)
+        - contactName
+        - email
+        - phone
+        - website
+        - location (city/state or address)
+        - description (what they do)
+        
+        Return a JSON array of objects.
+      `,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              companyName: { type: Type.STRING },
+              contactName: { type: Type.STRING },
+              email: { type: Type.STRING },
+              phone: { type: Type.STRING },
+              website: { type: Type.STRING },
+              location: { type: Type.STRING },
+              description: { type: Type.STRING }
+            },
+            required: ["companyName"]
+          }
+        }
+      }
+    });
+
+    return JSON.parse(response.text || "[]");
+  } catch (error) {
+    console.error("Error parsing import data:", error);
+    return [];
+  }
+};

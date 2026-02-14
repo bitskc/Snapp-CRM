@@ -1,46 +1,11 @@
+import { supabase } from './supabaseClient';
 import { Lead, Note, AppSettings, Product, StatusConfig } from '../types';
 
-const STORAGE_KEY_LEADS = 'servicesnapp_crm_data';
-const STORAGE_KEY_SETTINGS = 'servicesnapp_crm_settings';
-const STORAGE_KEY_PRODUCTS = 'servicesnapp_crm_products';
-
 const DEFAULT_STATUSES: StatusConfig[] = [
-    { id: 'COLD', label: 'Cold', color: 'blue', order: 0 },
-    { id: 'WARM', label: 'Warm', color: 'yellow', order: 1 },
-    { id: 'LIVE', label: 'Live', color: 'green', order: 2 },
-    { id: 'DEAD', label: 'Dead', color: 'red', order: 3 },
-];
-
-// Initial seed data
-const SEED_LEADS: Lead[] = [
-  {
-    id: '1',
-    companyName: 'Acme HVAC Services',
-    contactName: 'John Doe',
-    email: 'john@acmehvac.com',
-    phone: '555-0123',
-    status: 'COLD',
-    location: 'Oklahoma City, OK',
-    description: 'Mid-sized HVAC company, uses paper invoices currently.',
-    source: 'MANUAL',
-    createdAt: new Date().toISOString(),
-    productIds: [],
-    notes: [
-      { id: 'n1', content: 'Left a voicemail.', createdAt: new Date().toISOString(), author: 'Me' }
-    ]
-  },
-  {
-    id: '2',
-    companyName: 'Sooner Plumbing',
-    contactName: 'Jane Smith',
-    status: 'WARM',
-    location: 'Tulsa, OK',
-    description: 'Looking to switch from Service Titan.',
-    source: 'MANUAL',
-    createdAt: new Date().toISOString(),
-    productIds: [],
-    notes: []
-  }
+  { id: 'COLD', label: 'Cold', color: 'blue', order: 0 },
+  { id: 'WARM', label: 'Warm', color: 'yellow', order: 1 },
+  { id: 'LIVE', label: 'Live', color: 'green', order: 2 },
+  { id: 'DEAD', label: 'Dead', color: 'red', order: 3 },
 ];
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -51,151 +16,311 @@ const DEFAULT_SETTINGS: AppSettings = {
   statuses: DEFAULT_STATUSES
 };
 
-const DEFAULT_PRODUCTS: Product[] = [
-  { id: 'p1', name: 'ServiceSnapp Mobile', description: 'Core mobile app for technicians to view jobs and invoice in the field.' },
-  { id: 'p2', name: 'ServiceSnapp Pro', description: 'Full desktop dashboard with dispatching, inventory, and payroll.' }
-];
-
 // --- Utilities ---
 
-// Simple cache to prevent re-geocoding the same string in a session
-const geocodeCache: Record<string, {lat: number, lon: number}> = {};
+const geocodeCache: Record<string, { lat: number, lon: number }> = {};
 
-const geocodeLocation = async (location: string): Promise<{lat: number, lon: number} | null> => {
-    if (geocodeCache[location]) return geocodeCache[location];
-    
-    try {
-        // Using Nominatim (OpenStreetMap). 
-        // Note: Please respect Usage Policy (max 1 req/sec). 
-        // We rely on the UI not saving extremely rapidly in bulk for this simple demo.
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&limit=1`;
-        const res = await fetch(url, {
-             headers: {
-                 'User-Agent': 'ServiceSnappCRM-Demo'
-             }
-        });
-        const data = await res.json();
-        if (data && data.length > 0) {
-            const coords = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
-            geocodeCache[location] = coords;
-            return coords;
-        }
-    } catch (e) {
-        console.warn("Geocoding failed for", location, e);
+const geocodeLocation = async (location: string): Promise<{ lat: number, lon: number } | null> => {
+  if (geocodeCache[location]) return geocodeCache[location];
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&limit=1`;
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'ServiceSnappCRM-Demo'
+      }
+    });
+    const data = await res.json();
+    if (data && data.length > 0) {
+      const coords = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+      geocodeCache[location] = coords;
+      return coords;
     }
-    return null;
+  } catch (e) {
+    console.warn("Geocoding failed for", location, e);
+  }
+  return null;
 };
 
 // --- Leads ---
 
 export const fetchLeads = async (): Promise<Lead[]> => {
-  await new Promise(resolve => setTimeout(resolve, 300));
-  const stored = localStorage.getItem(STORAGE_KEY_LEADS);
-  if (!stored) {
-    localStorage.setItem(STORAGE_KEY_LEADS, JSON.stringify(SEED_LEADS));
-    return SEED_LEADS;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('leads')
+    .select(`
+      *,
+      notes (*),
+      lead_products (product_id)
+    `)
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching leads:', error);
+    return [];
   }
-  const leads = JSON.parse(stored);
-  // Migration for old data without productIds or coords
-  return leads.map((l: any) => ({ 
-      ...l, 
-      productIds: l.productIds || []
+
+  return (data as any[]).map(row => ({
+    id: row.id,
+    user_id: row.user_id,
+    companyName: row.company_name,
+    contactName: row.contact_name,
+    email: row.email,
+    phone: row.phone,
+    website: row.website,
+    location: row.location,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    status: row.status,
+    description: row.description,
+    source: row.source,
+    createdAt: row.created_at,
+    aiAnalysis: row.ai_analysis,
+    matchScore: row.match_score,
+    matchReason: row.match_reason,
+    notes: (row.notes || []).map((n: any) => ({
+      id: n.id,
+      content: n.content,
+      createdAt: n.created_at,
+      author: 'User'
+    })),
+    productIds: (row.lead_products || []).map((lp: any) => lp.product_id)
   }));
 };
 
 export const saveLead = async (lead: Lead): Promise<Lead> => {
-  // Geocoding check: If location exists but no coords, try to find them.
-  // This happens asynchronously to the UI but we await it here for simplicity in this demo.
-  if (lead.location && (!lead.latitude || !lead.longitude)) {
-      const coords = await geocodeLocation(lead.location);
-      if (coords) {
-          lead.latitude = coords.lat;
-          lead.longitude = coords.lon;
-      }
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // 1. Geocoding logic remains the same...
+  let locationChanged = false;
+  if (lead.id && lead.id.length > 10) {
+    const { data: existingLead } = await supabase
+      .from('leads')
+      .select('location')
+      .eq('id', lead.id)
+      .single();
+
+    locationChanged = existingLead && existingLead.location !== lead.location;
   }
 
-  await new Promise(resolve => setTimeout(resolve, 200));
-  const leads = await fetchLeads();
-  const existingIndex = leads.findIndex(l => l.id === lead.id);
-  
-  if (existingIndex >= 0) {
-    // Retain coords if they exist in DB but weren't passed (though they should be)
-    // or if we just geocoded them, we overwrite.
-    leads[existingIndex] = lead;
-  } else {
-    leads.push(lead);
+  const needsGeocoding = lead.location && (!lead.latitude || !lead.longitude || locationChanged);
+
+  if (needsGeocoding) {
+    const coords = await geocodeLocation(lead.location!);
+    if (coords) {
+      lead.latitude = coords.lat;
+      lead.longitude = coords.lon;
+    }
   }
-  
-  localStorage.setItem(STORAGE_KEY_LEADS, JSON.stringify(leads));
-  return lead;
+
+  // 2. Main Lead Update
+  const leadData = {
+    id: lead.id && lead.id.length > 10 ? lead.id : undefined,
+    user_id: user.id, // Enforce ownership
+    company_name: lead.companyName,
+    contact_name: lead.contactName,
+    email: lead.email,
+    phone: lead.phone,
+    website: lead.website,
+    location: lead.location,
+    latitude: lead.latitude,
+    longitude: lead.longitude,
+    status: lead.status,
+    description: lead.description,
+    source: lead.source,
+    ai_analysis: lead.aiAnalysis,
+    match_score: lead.matchScore,
+    match_reason: lead.matchReason,
+    updated_at: new Date().toISOString()
+  };
+
+  const { data: savedLead, error } = await supabase
+    .from('leads')
+    .upsert(leadData)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error saving lead:', error);
+    throw error;
+  }
+
+  // 3. Handle Products (Many-to-Many)
+  await supabase.from('lead_products').delete().eq('lead_id', savedLead.id);
+
+  if (lead.productIds && lead.productIds.length > 0) {
+    const productLinks = lead.productIds.map(pid => ({
+      lead_id: savedLead.id,
+      product_id: pid
+    }));
+    await supabase.from('lead_products').insert(productLinks);
+  }
+
+  return {
+    ...lead,
+    id: savedLead.id,
+    user_id: savedLead.user_id,
+    createdAt: savedLead.created_at
+  };
 };
 
 export const deleteLead = async (leadId: string): Promise<void> => {
-  const leads = await fetchLeads();
-  const filtered = leads.filter(l => l.id !== leadId);
-  localStorage.setItem(STORAGE_KEY_LEADS, JSON.stringify(filtered));
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { error } = await supabase
+    .from('leads')
+    .delete()
+    .eq('id', leadId)
+    .eq('user_id', user.id); // Extra safety
+
+  if (error) throw error;
 };
 
 export const addNoteToLead = async (leadId: string, content: string): Promise<Note> => {
-  const leads = await fetchLeads();
-  const leadIndex = leads.findIndex(l => l.id === leadId);
-  if (leadIndex === -1) throw new Error('Lead not found');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
 
-  const newNote: Note = {
-    id: Math.random().toString(36).substr(2, 9),
-    content,
-    createdAt: new Date().toISOString(),
+  const { data, error } = await supabase
+    .from('notes')
+    .insert({
+      lead_id: leadId,
+      content,
+      type: 'MANUAL',
+      user_id: user.id // Assign owner to note if schema supports, or rely on lead relation
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return {
+    id: data.id,
+    content: data.content,
+    createdAt: data.created_at,
     author: 'User'
   };
-
-  leads[leadIndex].notes.push(newNote);
-  localStorage.setItem(STORAGE_KEY_LEADS, JSON.stringify(leads));
-  return newNote;
 };
 
 // --- Settings ---
 
 export const fetchSettings = async (): Promise<AppSettings> => {
-    const stored = localStorage.getItem(STORAGE_KEY_SETTINGS);
-    if (!stored) return DEFAULT_SETTINGS;
-    const settings = JSON.parse(stored);
-    // Migration: ensure statuses exist
-    if (!settings.statuses) {
-        settings.statuses = DEFAULT_STATUSES;
-    }
-    return settings;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return DEFAULT_SETTINGS;
+
+  const { data, error } = await supabase
+    .from('settings')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle(); // Don't throw if not found
+
+  if (error || !data) {
+    return { ...DEFAULT_SETTINGS, user_id: user.id };
+  }
+
+  return {
+    id: data.id,
+    user_id: data.user_id,
+    companyName: data.company_name || 'ServiceSnapp',
+    companyDescription: data.company_description || '',
+    aboutMe: data.about_me || '',
+    statuses: data.statuses || DEFAULT_STATUSES,
+    sheetUrl: data.sheet_url || ''
+  };
 };
 
 export const saveSettings = async (settings: AppSettings): Promise<AppSettings> => {
-    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
-    return settings;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('settings')
+    .upsert({
+      user_id: user.id, // Key match for uniqueness logic or RLS
+      statuses: settings.statuses,
+      company_name: settings.companyName,
+      company_description: settings.companyDescription,
+      about_me: settings.aboutMe,
+      sheet_url: settings.sheetUrl,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' }) // Ensure one row per user
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error saving settings:', error);
+    throw error;
+  }
+
+  return {
+    ...settings,
+    id: data.id,
+    user_id: data.user_id
+  };
 };
 
 // --- Products ---
 
 export const fetchProducts = async (): Promise<Product[]> => {
-    const stored = localStorage.getItem(STORAGE_KEY_PRODUCTS);
-    if (!stored) {
-        localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(DEFAULT_PRODUCTS));
-        return DEFAULT_PRODUCTS;
-    }
-    return JSON.parse(stored);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('name');
+
+  if (error) return [];
+
+  return (data || []).map(p => ({
+    id: p.id,
+    user_id: p.user_id,
+    name: p.name,
+    description: p.description
+  }));
 };
 
 export const saveProduct = async (product: Product): Promise<Product> => {
-    const products = await fetchProducts();
-    const index = products.findIndex(p => p.id === product.id);
-    if (index >= 0) {
-        products[index] = product;
-    } else {
-        products.push(product);
-    }
-    localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(products));
-    return product;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('products')
+    .upsert({
+      id: product.id && product.id.length > 10 ? product.id : undefined,
+      user_id: user.id,
+      name: product.name,
+      description: product.description
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error saving product:', error);
+    throw error;
+  }
+
+  return {
+    ...product,
+    id: data.id,
+    user_id: data.user_id
+  };
 };
 
 export const deleteProduct = async (productId: string): Promise<void> => {
-    const products = await fetchProducts();
-    const filtered = products.filter(p => p.id !== productId);
-    localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(filtered));
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { error } = await supabase
+    .from('products')
+    .delete()
+    .eq('id', productId)
+    .eq('user_id', user.id);
+
+  if (error) throw error;
 };
