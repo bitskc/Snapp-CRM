@@ -1,8 +1,15 @@
-import { Lead, LeadStatus, Note, AppSettings, Product } from '../types';
+import { Lead, Note, AppSettings, Product, StatusConfig } from '../types';
 
 const STORAGE_KEY_LEADS = 'servicesnapp_crm_data';
 const STORAGE_KEY_SETTINGS = 'servicesnapp_crm_settings';
 const STORAGE_KEY_PRODUCTS = 'servicesnapp_crm_products';
+
+const DEFAULT_STATUSES: StatusConfig[] = [
+    { id: 'COLD', label: 'Cold', color: 'blue', order: 0 },
+    { id: 'WARM', label: 'Warm', color: 'yellow', order: 1 },
+    { id: 'LIVE', label: 'Live', color: 'green', order: 2 },
+    { id: 'DEAD', label: 'Dead', color: 'red', order: 3 },
+];
 
 // Initial seed data
 const SEED_LEADS: Lead[] = [
@@ -12,7 +19,7 @@ const SEED_LEADS: Lead[] = [
     contactName: 'John Doe',
     email: 'john@acmehvac.com',
     phone: '555-0123',
-    status: LeadStatus.COLD,
+    status: 'COLD',
     location: 'Oklahoma City, OK',
     description: 'Mid-sized HVAC company, uses paper invoices currently.',
     source: 'MANUAL',
@@ -26,7 +33,7 @@ const SEED_LEADS: Lead[] = [
     id: '2',
     companyName: 'Sooner Plumbing',
     contactName: 'Jane Smith',
-    status: LeadStatus.WARM,
+    status: 'WARM',
     location: 'Tulsa, OK',
     description: 'Looking to switch from Service Titan.',
     source: 'MANUAL',
@@ -40,7 +47,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   companyName: 'ServiceSnapp',
   companyDescription: 'The premier mobile Field Service Management (FSM) application for HVAC, Plumbing, and Electrical businesses.',
   aboutMe: 'Professional, helpful, and direct sales approach.',
-  sheetUrl: ''
+  sheetUrl: '',
+  statuses: DEFAULT_STATUSES
 };
 
 const DEFAULT_PRODUCTS: Product[] = [
@@ -150,7 +158,12 @@ export const addNoteToLead = async (leadId: string, content: string): Promise<No
 export const fetchSettings = async (): Promise<AppSettings> => {
     const stored = localStorage.getItem(STORAGE_KEY_SETTINGS);
     if (!stored) return DEFAULT_SETTINGS;
-    return JSON.parse(stored);
+    const settings = JSON.parse(stored);
+    // Migration: ensure statuses exist
+    if (!settings.statuses) {
+        settings.statuses = DEFAULT_STATUSES;
+    }
+    return settings;
 };
 
 export const saveSettings = async (settings: AppSettings): Promise<AppSettings> => {

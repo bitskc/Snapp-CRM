@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Save, Sparkles, Plus, Trash2, Database, Loader2, Edit2 } from 'lucide-react';
-import { AppSettings, Product } from '../types';
+import { Save, Sparkles, Plus, Trash2, Database, Loader2, Edit2, GripVertical, Check } from 'lucide-react';
+import { AppSettings, Product, StatusConfig } from '../types';
 import { saveSettings, saveProduct, deleteProduct } from '../services/crmService';
 import { generateProductDescription } from '../services/geminiService';
 
@@ -11,15 +11,30 @@ interface SettingsPageProps {
   onProductsUpdate: (p: Product[]) => void;
 }
 
+const COLORS = [
+    { name: 'blue', class: 'bg-blue-500' },
+    { name: 'green', class: 'bg-green-500' },
+    { name: 'yellow', class: 'bg-yellow-500' },
+    { name: 'red', class: 'bg-red-500' },
+    { name: 'purple', class: 'bg-purple-500' },
+    { name: 'orange', class: 'bg-orange-500' },
+    { name: 'pink', class: 'bg-pink-500' },
+    { name: 'gray', class: 'bg-slate-500' },
+];
+
 export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products, onSettingsUpdate, onProductsUpdate }) => {
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'general' | 'products'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'products' | 'statuses'>('general');
   
   // Product State
   const [newProduct, setNewProduct] = useState<Partial<Product>>({});
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Status State
+  const [newStatusLabel, setNewStatusLabel] = useState('');
+  const [newStatusColor, setNewStatusColor] = useState('blue');
 
   const handleSaveSettings = async () => {
     setIsSaving(true);
@@ -53,7 +68,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products, 
   const handleEditProduct = (product: Product) => {
       setNewProduct({ name: product.name, description: product.description });
       setEditingId(product.id);
-      // Scroll to top of form
       const form = document.getElementById('product-form');
       if (form) form.scrollIntoView({ behavior: 'smooth' });
   };
@@ -80,6 +94,40 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products, 
       }
   };
 
+  const handleAddStatus = () => {
+      if (!newStatusLabel) return;
+      const newStatus: StatusConfig = {
+          id: newStatusLabel.toUpperCase().replace(/\s+/g, '_'),
+          label: newStatusLabel,
+          color: newStatusColor,
+          order: localSettings.statuses.length
+      };
+      setLocalSettings(prev => ({
+          ...prev,
+          statuses: [...prev.statuses, newStatus]
+      }));
+      setNewStatusLabel('');
+  };
+
+  const handleDeleteStatus = (id: string) => {
+      setLocalSettings(prev => ({
+          ...prev,
+          statuses: prev.statuses.filter(s => s.id !== id)
+      }));
+  };
+
+  const handleMoveStatus = (index: number, direction: 'up' | 'down') => {
+      const newStatuses = [...localSettings.statuses];
+      if (direction === 'up' && index > 0) {
+          [newStatuses[index], newStatuses[index - 1]] = [newStatuses[index - 1], newStatuses[index]];
+      } else if (direction === 'down' && index < newStatuses.length - 1) {
+          [newStatuses[index], newStatuses[index + 1]] = [newStatuses[index + 1], newStatuses[index]];
+      }
+      // Re-index order
+      newStatuses.forEach((s, i) => s.order = i);
+      setLocalSettings(prev => ({ ...prev, statuses: newStatuses }));
+  };
+
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-200 overflow-hidden">
         <div className="p-6 border-b border-slate-800">
@@ -92,6 +140,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products, 
                     General & Connection
                 </button>
                 <button 
+                  onClick={() => setActiveTab('statuses')}
+                  className={`pb-2 border-b-2 transition-colors ${activeTab === 'statuses' ? 'text-brand-400 border-brand-400' : 'border-transparent hover:text-slate-200'}`}
+                >
+                    Pipeline Statuses
+                </button>
+                <button 
                   onClick={() => setActiveTab('products')}
                   className={`pb-2 border-b-2 transition-colors ${activeTab === 'products' ? 'text-brand-400 border-brand-400' : 'border-transparent hover:text-slate-200'}`}
                 >
@@ -100,7 +154,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products, 
             </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 max-w-4xl">
+        <div className="flex-1 overflow-y-auto p-6 max-w-4xl custom-scrollbar">
             {activeTab === 'general' && (
                 <div className="space-y-8">
                     {/* Google Sheet Connection */}
@@ -158,16 +212,79 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products, 
                                 />
                             </div>
                         </div>
-                        <div className="mt-6 flex justify-end">
-                            <button 
-                                onClick={handleSaveSettings}
-                                disabled={isSaving}
-                                className="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
-                            >
-                                {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                                Save Changes
-                            </button>
+                    </div>
+                    
+                    <div className="flex justify-end sticky bottom-0 bg-slate-950 p-4 border-t border-slate-800">
+                        <button 
+                            onClick={handleSaveSettings}
+                            disabled={isSaving}
+                            className="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                        >
+                            {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                            Save All Changes
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'statuses' && (
+                <div className="space-y-6">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                        <h3 className="text-lg font-semibold text-white mb-4">Pipeline Statuses</h3>
+                        <div className="space-y-2 mb-6">
+                            {localSettings.statuses.map((status, index) => (
+                                <div key={status.id} className="flex items-center gap-3 bg-slate-800 p-3 rounded-lg border border-slate-700 group">
+                                    <div className="flex flex-col gap-1 text-slate-500">
+                                        <button onClick={() => handleMoveStatus(index, 'up')} disabled={index === 0} className="hover:text-slate-300 disabled:opacity-20"><GripVertical size={12}/></button>
+                                    </div>
+                                    <div className={`w-4 h-4 rounded-full bg-${status.color}-500 shadow`}></div>
+                                    <span className="font-medium text-slate-200 flex-1">{status.label}</span>
+                                    <span className="text-xs text-slate-500 font-mono">{status.id}</span>
+                                    <button onClick={() => handleDeleteStatus(status.id)} className="text-slate-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            ))}
                         </div>
+
+                        <div className="border-t border-slate-800 pt-4">
+                             <h4 className="text-sm font-medium text-slate-400 mb-3">Add New Status</h4>
+                             <div className="flex gap-3 items-center">
+                                 <input 
+                                    className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-brand-500"
+                                    placeholder="Status Name (e.g. Negotiating)"
+                                    value={newStatusLabel}
+                                    onChange={(e) => setNewStatusLabel(e.target.value)}
+                                 />
+                                 <div className="flex gap-1">
+                                     {COLORS.map(c => (
+                                         <button
+                                            key={c.name}
+                                            onClick={() => setNewStatusColor(c.name)}
+                                            className={`w-8 h-8 rounded-full ${c.class} transition-transform hover:scale-110 ${newStatusColor === c.name ? 'ring-2 ring-white scale-110' : 'opacity-70 hover:opacity-100'}`}
+                                         />
+                                     ))}
+                                 </div>
+                                 <button 
+                                    onClick={handleAddStatus}
+                                    disabled={!newStatusLabel}
+                                    className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium ml-auto"
+                                 >
+                                    Add
+                                 </button>
+                             </div>
+                        </div>
+                    </div>
+                    
+                     <div className="flex justify-end sticky bottom-0 bg-slate-950 p-4 border-t border-slate-800">
+                        <button 
+                            onClick={handleSaveSettings}
+                            disabled={isSaving}
+                            className="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                        >
+                            {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                            Save Changes
+                        </button>
                     </div>
                 </div>
             )}

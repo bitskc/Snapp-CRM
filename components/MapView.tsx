@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Lead, LeadStatus } from '../types';
-import { saveLead } from '../services/crmService';
+import { Lead, AppSettings } from '../types';
+import { saveLead, fetchSettings } from '../services/crmService';
 import { Loader2 } from 'lucide-react';
 
 // Declare Leaflet global
@@ -16,6 +16,11 @@ export const MapView: React.FC<MapViewProps> = ({ leads, onLeadClick }) => {
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const [geocodingQueue, setGeocodingQueue] = useState<Lead[]>([]);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+
+  useEffect(() => {
+      fetchSettings().then(setSettings);
+  }, []);
 
   // Identify leads that have location but no coordinates and need geocoding
   useEffect(() => {
@@ -70,7 +75,7 @@ export const MapView: React.FC<MapViewProps> = ({ leads, onLeadClick }) => {
 
   // Update Markers
   useEffect(() => {
-      if (!mapInstanceRef.current) return;
+      if (!mapInstanceRef.current || !settings) return;
       const map = mapInstanceRef.current;
 
       // Clear existing markers
@@ -85,16 +90,27 @@ export const MapView: React.FC<MapViewProps> = ({ leads, onLeadClick }) => {
 
       leadsWithLocation.forEach(lead => {
           // Determine color based on status
-          let color = '#94a3b8'; // slate (default)
-          if (lead.status === LeadStatus.COLD) color = '#60a5fa'; // blue
-          if (lead.status === LeadStatus.WARM) color = '#facc15'; // yellow
-          if (lead.status === LeadStatus.LIVE) color = '#4ade80'; // green
-          if (lead.status === LeadStatus.DEAD) color = '#f87171'; // red
+          const statusConfig = settings.statuses.find(s => s.id === lead.status);
+          const colorName = statusConfig ? statusConfig.color : 'gray';
+          
+          // Map color names to Hex for the marker
+          const colorMap: Record<string, string> = {
+              blue: '#60a5fa',
+              green: '#4ade80',
+              yellow: '#facc15',
+              red: '#f87171',
+              purple: '#c084fc',
+              orange: '#fb923c',
+              pink: '#f472b6',
+              gray: '#94a3b8'
+          };
+
+          const hexColor = colorMap[colorName] || '#94a3b8';
 
           // Custom Marker Icon (simple html div)
           const customIcon = L.divIcon({
             className: 'custom-div-icon',
-            html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5);"></div>`,
+            html: `<div style="background-color: ${hexColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5);"></div>`,
             iconSize: [12, 12],
             iconAnchor: [6, 6]
           });
@@ -105,7 +121,7 @@ export const MapView: React.FC<MapViewProps> = ({ leads, onLeadClick }) => {
                 <div class="text-slate-900 text-sm">
                     <strong>${lead.companyName}</strong><br/>
                     ${lead.location}<br/>
-                    <span class="text-xs font-bold text-slate-500">${lead.status}</span>
+                    <span class="text-xs font-bold text-slate-500">${statusConfig?.label || lead.status}</span>
                 </div>
             `);
           
@@ -130,7 +146,9 @@ export const MapView: React.FC<MapViewProps> = ({ leads, onLeadClick }) => {
           map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 });
       }
 
-  }, [leads, onLeadClick]);
+  }, [leads, onLeadClick, settings]);
+
+  if (!settings) return null;
 
   return (
     <div className="w-full h-full relative rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
@@ -148,10 +166,11 @@ export const MapView: React.FC<MapViewProps> = ({ leads, onLeadClick }) => {
         )}
 
         <div className="absolute bottom-4 left-4 z-[400] bg-slate-900/90 backdrop-blur border border-slate-700 p-2 rounded-lg shadow-xl text-xs space-y-1">
-             <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-400 border border-white"></div> Cold</div>
-             <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-yellow-400 border border-white"></div> Warm</div>
-             <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-400 border border-white"></div> Live</div>
-             <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-400 border border-white"></div> Dead</div>
+             {settings.statuses.map(s => (
+                 <div key={s.id} className="flex items-center gap-2">
+                     <div className={`w-2 h-2 rounded-full bg-${s.color}-500 border border-white`}></div> {s.label}
+                 </div>
+             ))}
         </div>
     </div>
   );

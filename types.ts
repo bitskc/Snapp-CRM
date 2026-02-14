@@ -1,8 +1,10 @@
-export enum LeadStatus {
-  COLD = 'COLD',
-  WARM = 'WARM',
-  LIVE = 'LIVE',
-  DEAD = 'DEAD',
+export type LeadStatus = string;
+
+export interface StatusConfig {
+  id: string;
+  label: string;
+  color: string; // e.g. 'blue', 'green', 'red', 'yellow', 'purple', 'gray'
+  order: number;
 }
 
 export interface Note {
@@ -23,6 +25,7 @@ export interface AppSettings {
   companyDescription: string;
   aboutMe: string; // User persona/style
   sheetUrl?: string;
+  statuses: StatusConfig[];
 }
 
 export interface LeadAIAnalysis {

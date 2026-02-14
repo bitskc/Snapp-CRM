@@ -174,7 +174,7 @@ export default function App() {
     if (needsContactFilter) {
         const today = new Date().toDateString();
         const contactedToday = l.notes.some(n => new Date(n.createdAt).toDateString() === today);
-        matchesNeedsContact = !contactedToday && l.status !== LeadStatus.DEAD;
+        matchesNeedsContact = !contactedToday && l.status !== 'DEAD';
     }
 
     let matchesSource = true;
@@ -301,26 +301,26 @@ export default function App() {
             {viewMode === 'kanban' ? (
                 <div className="flex gap-4 h-full min-w-max overflow-x-auto">
                 <KanbanColumn 
-                    status={LeadStatus.COLD} 
-                    leads={filteredLeads.filter(l => l.status === LeadStatus.COLD)} 
+                    status={'COLD'}
+                    leads={filteredLeads.filter(l => l.status === 'COLD')} 
                     onCardClick={setSelectedLead}
                     color="border-blue-500"
                 />
                 <KanbanColumn 
-                    status={LeadStatus.WARM} 
-                    leads={filteredLeads.filter(l => l.status === LeadStatus.WARM)} 
+                    status={'WARM'}
+                    leads={filteredLeads.filter(l => l.status === 'WARM')} 
                     onCardClick={setSelectedLead}
                     color="border-yellow-500"
                 />
                 <KanbanColumn 
-                    status={LeadStatus.LIVE} 
-                    leads={filteredLeads.filter(l => l.status === LeadStatus.LIVE)} 
+                    status={'LIVE'}
+                    leads={filteredLeads.filter(l => l.status === 'LIVE')} 
                     onCardClick={setSelectedLead}
                     color="border-green-500"
                 />
                 <KanbanColumn 
-                    status={LeadStatus.DEAD} 
-                    leads={filteredLeads.filter(l => l.status === LeadStatus.DEAD)} 
+                    status={'DEAD'}
+                    leads={filteredLeads.filter(l => l.status === 'DEAD')} 
                     onCardClick={setSelectedLead}
                     color="border-red-500"
                 />

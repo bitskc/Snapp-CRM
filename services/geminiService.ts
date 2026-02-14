@@ -47,7 +47,7 @@ export const findLeadsWithAI = async (query: string): Promise<Partial<Lead>[]> =
     return rawLeads.map((l: any) => ({
       ...l,
       id: Math.random().toString(36).substr(2, 9),
-      status: LeadStatus.COLD,
+      status: 'COLD',
       source: 'AI_FINDER',
       notes: [],
       productIds: [],

@@ -6,21 +6,25 @@ import { SettingsPage } from './components/SettingsPage';
 import { MapView } from './components/MapView';
 import { fetchLeads, saveLead, fetchSettings, fetchProducts } from './services/crmService';
 import { Lead, LeadStatus, AppSettings, Product } from './types';
-import { Search, Filter, RefreshCw, MoreHorizontal, List, Kanban, CalendarClock, ChevronDown, Map as MapIcon } from 'lucide-react';
+import { Search, Filter, RefreshCw, MoreHorizontal, List, Kanban, CalendarClock, ChevronDown, Map as MapIcon, Flame } from 'lucide-react';
 
 // Kanban Column Component
 const KanbanColumn: React.FC<{
-  status: LeadStatus;
+  title: string;
+  count: number;
   leads: Lead[];
   onCardClick: (lead: Lead) => void;
   color: string;
-}> = ({ status, leads, onCardClick, color }) => {
+}> = ({ title, count, leads, onCardClick, color }) => {
+  // Convert color name (e.g. 'blue') to actual tailwind classes safely if using dynamic colors
+  const borderClass = color.startsWith('border-') ? color : `border-${color}-500`;
+
   return (
     <div className="flex-1 min-w-[280px] bg-slate-900/50 rounded-xl p-3 flex flex-col h-full border border-slate-800/60">
-      <div className={`flex items-center justify-between mb-4 pb-2 border-b ${color}`}>
-        <h3 className="font-semibold text-slate-300 text-sm tracking-wide uppercase">{status}</h3>
+      <div className={`flex items-center justify-between mb-4 pb-2 border-b ${borderClass}`}>
+        <h3 className="font-semibold text-slate-300 text-sm tracking-wide uppercase">{title}</h3>
         <span className="bg-slate-800 px-2 py-0.5 rounded-full text-xs font-bold text-slate-400 shadow-sm border border-slate-700">
-          {leads.length}
+          {count}
         </span>
       </div>
       
@@ -47,16 +51,28 @@ const KanbanColumn: React.FC<{
                  {lead.source === 'AI_FINDER' && (
                      <span className="text-[10px] bg-purple-900/30 text-purple-400 px-1.5 py-0.5 rounded border border-purple-800/50 font-medium">AI Found</span>
                  )}
-                 <span className="text-[10px] text-slate-500">
-                    {new Date(lead.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                 </span>
+                 {lead.aiAnalysis && (
+                     <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium flex items-center gap-1
+                        ${lead.aiAnalysis.score >= 80 ? 'bg-green-900/30 text-green-400 border-green-800/50' : 
+                          lead.aiAnalysis.score >= 50 ? 'bg-yellow-900/30 text-yellow-400 border-yellow-800/50' :
+                          'bg-red-900/30 text-red-400 border-red-800/50'
+                        }
+                     `}>
+                        <Flame size={10} /> {lead.aiAnalysis.score}
+                     </span>
+                 )}
               </div>
               
-              {lead.notes.length > 0 && (
-                <span className="text-[10px] bg-slate-900 text-slate-500 px-1.5 py-0.5 rounded border border-slate-800">
-                  {lead.notes.length} notes
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                   <span className="text-[10px] text-slate-500">
+                    {new Date(lead.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                   </span>
+                  {lead.notes.length > 0 && (
+                    <span className="text-[10px] bg-slate-900 text-slate-500 px-1.5 py-0.5 rounded border border-slate-800">
+                      {lead.notes.length} notes
+                    </span>
+                  )}
+              </div>
             </div>
           </div>
         ))}
@@ -74,7 +90,8 @@ const KanbanColumn: React.FC<{
 const ListView: React.FC<{
   leads: Lead[];
   onRowClick: (lead: Lead) => void;
-}> = ({ leads, onRowClick }) => {
+  settings: AppSettings;
+}> = ({ leads, onRowClick, settings }) => {
     return (
         <div className="w-full h-full overflow-hidden bg-slate-900 rounded-xl border border-slate-800 shadow-sm flex flex-col">
             <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-slate-800 bg-slate-900/50 text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -87,6 +104,8 @@ const ListView: React.FC<{
             <div className="flex-1 overflow-y-auto custom-scrollbar">
                 {leads.map(lead => {
                     const lastNote = lead.notes[lead.notes.length - 1];
+                    const statusConfig = settings.statuses.find(s => s.id === lead.status);
+                    
                     return (
                         <div 
                             key={lead.id} 
@@ -97,12 +116,11 @@ const ListView: React.FC<{
                             <div className="col-span-2 text-slate-400 truncate">{lead.contactName || '-'}</div>
                             <div className="col-span-2">
                                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide
-                                   ${lead.status === 'COLD' ? 'bg-blue-900/30 text-blue-400 border border-blue-800/50' : ''}
-                                   ${lead.status === 'WARM' ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-800/50' : ''}
-                                   ${lead.status === 'LIVE' ? 'bg-green-900/30 text-green-400 border border-green-800/50' : ''}
-                                   ${lead.status === 'DEAD' ? 'bg-red-900/30 text-red-400 border border-red-800/50' : ''}
+                                    ${statusConfig 
+                                        ? `bg-${statusConfig.color}-900/30 text-${statusConfig.color}-400 border border-${statusConfig.color}-800/50` 
+                                        : 'bg-slate-800 text-slate-400'}
                                  `}>
-                                   {lead.status}
+                                   {statusConfig?.label || lead.status}
                                  </span>
                             </div>
                             <div className="col-span-3 text-slate-500 truncate text-xs">
@@ -125,6 +143,7 @@ const ListView: React.FC<{
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'finder' | 'settings'>('dashboard');
   const [viewMode, setViewMode] = useState<'kanban' | 'list' | 'map'>('kanban');
+  const [groupBy, setGroupBy] = useState<'STATUS' | 'HOTNESS'>('STATUS');
   
   // Data State
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -137,6 +156,7 @@ export default function App() {
   const [searchFilter, setSearchFilter] = useState('');
   const [needsContactFilter, setNeedsContactFilter] = useState(false);
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const [isGroupByMenuOpen, setIsGroupByMenuOpen] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<'ALL' | 'MANUAL' | 'AI'>('ALL');
 
   const loadData = async () => {
@@ -175,7 +195,7 @@ export default function App() {
     if (needsContactFilter) {
         const today = new Date().toDateString();
         const contactedToday = l.notes.some(n => new Date(n.createdAt).toDateString() === today);
-        matchesNeedsContact = !contactedToday && l.status !== LeadStatus.DEAD;
+        matchesNeedsContact = !contactedToday && l.status !== 'DEAD';
     }
 
     let matchesSource = true;
@@ -210,9 +230,9 @@ export default function App() {
     <Layout activeTab={activeTab} onTabChange={setActiveTab}>
       
       {activeTab === 'dashboard' && (
-        <div className="flex flex-col h-full bg-slate-950">
-          {/* Dashboard Header - Added z-50 to ensure dropdowns appear over content */}
-          <div className="px-6 py-4 border-b border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4 relative z-50">
+        <div className="flex flex-col h-full bg-slate-950 relative">
+          {/* Dashboard Header - High Z-Index to stay on top */}
+          <div className="px-6 py-4 border-b border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4 relative z-[100]">
             <div className="flex items-center gap-4 flex-1 w-full">
               <div className="relative w-full max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
@@ -241,9 +261,42 @@ export default function App() {
                     <CalendarClock size={16} /> Needs Contact Today
                 </button>
 
+                {/* Group By Dropdown */}
+                 <div className="relative">
+                    <button 
+                        onClick={() => { setIsGroupByMenuOpen(!isGroupByMenuOpen); setIsFilterMenuOpen(false); }}
+                        className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-all whitespace-nowrap
+                        ${groupBy !== 'STATUS'
+                        ? 'bg-purple-900/30 text-purple-400 border-purple-800' 
+                        : 'text-slate-400 hover:bg-slate-900 border-transparent hover:border-slate-800'}
+                        `}
+                    >
+                        {groupBy === 'STATUS' ? 'Status' : 'Hotness'} <ChevronDown size={14} />
+                    </button>
+                    
+                    {isGroupByMenuOpen && (
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 z-50">
+                            <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase">Group By</div>
+                            <button 
+                                onClick={() => { setGroupBy('STATUS'); setIsGroupByMenuOpen(false); }}
+                                className={`w-full text-left px-4 py-2 text-sm ${groupBy === 'STATUS' ? 'text-brand-400 bg-slate-800' : 'text-slate-300 hover:bg-slate-800'}`}
+                            >
+                                Pipeline Status
+                            </button>
+                            <button 
+                                onClick={() => { setGroupBy('HOTNESS'); setIsGroupByMenuOpen(false); }}
+                                className={`w-full text-left px-4 py-2 text-sm ${groupBy === 'HOTNESS' ? 'text-purple-400 bg-slate-800' : 'text-slate-300 hover:bg-slate-800'}`}
+                            >
+                                Deal Hotness (AI Score)
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Filter Dropdown */}
                 <div className="relative">
                     <button 
-                        onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                        onClick={() => { setIsFilterMenuOpen(!isFilterMenuOpen); setIsGroupByMenuOpen(false); }}
                         className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-all whitespace-nowrap
                         ${sourceFilter !== 'ALL'
                         ? 'bg-brand-900/30 text-brand-400 border-brand-800' 
@@ -254,7 +307,7 @@ export default function App() {
                     </button>
                     
                     {isFilterMenuOpen && (
-                        <div className="absolute top-full right-0 mt-2 w-48 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 z-50 ring-1 ring-black ring-opacity-5 focus:outline-none">
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 z-50 ring-1 ring-black ring-opacity-5">
                             <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase">Source</div>
                             <button 
                                 onClick={() => { setSourceFilter('ALL'); setIsFilterMenuOpen(false); }}
@@ -310,33 +363,52 @@ export default function App() {
           <div className="flex-1 overflow-hidden p-6 relative z-0">
             {viewMode === 'kanban' ? (
                 <div className="flex gap-4 h-full min-w-max overflow-x-auto">
-                <KanbanColumn 
-                    status={LeadStatus.COLD} 
-                    leads={filteredLeads.filter(l => l.status === LeadStatus.COLD)} 
-                    onCardClick={setSelectedLead}
-                    color="border-blue-500"
-                />
-                <KanbanColumn 
-                    status={LeadStatus.WARM} 
-                    leads={filteredLeads.filter(l => l.status === LeadStatus.WARM)} 
-                    onCardClick={setSelectedLead}
-                    color="border-yellow-500"
-                />
-                <KanbanColumn 
-                    status={LeadStatus.LIVE} 
-                    leads={filteredLeads.filter(l => l.status === LeadStatus.LIVE)} 
-                    onCardClick={setSelectedLead}
-                    color="border-green-500"
-                />
-                <KanbanColumn 
-                    status={LeadStatus.DEAD} 
-                    leads={filteredLeads.filter(l => l.status === LeadStatus.DEAD)} 
-                    onCardClick={setSelectedLead}
-                    color="border-red-500"
-                />
+                    {groupBy === 'STATUS' && settings?.statuses.map(status => (
+                        <KanbanColumn 
+                            key={status.id}
+                            title={status.label} 
+                            leads={filteredLeads.filter(l => l.status === status.id)} 
+                            count={filteredLeads.filter(l => l.status === status.id).length}
+                            onCardClick={setSelectedLead}
+                            color={status.color} // pass color name, component handles class
+                        />
+                    ))}
+
+                    {groupBy === 'HOTNESS' && (
+                        <>
+                            <KanbanColumn 
+                                title="🔥 Hot (80+)" 
+                                leads={filteredLeads.filter(l => l.aiAnalysis && l.aiAnalysis.score >= 80)}
+                                count={filteredLeads.filter(l => l.aiAnalysis && l.aiAnalysis.score >= 80).length}
+                                onCardClick={setSelectedLead}
+                                color="green"
+                            />
+                            <KanbanColumn 
+                                title="☀️ Warm (50-79)" 
+                                leads={filteredLeads.filter(l => l.aiAnalysis && l.aiAnalysis.score >= 50 && l.aiAnalysis.score < 80)}
+                                count={filteredLeads.filter(l => l.aiAnalysis && l.aiAnalysis.score >= 50 && l.aiAnalysis.score < 80).length}
+                                onCardClick={setSelectedLead}
+                                color="yellow"
+                            />
+                            <KanbanColumn 
+                                title="❄️ Cold (<50)" 
+                                leads={filteredLeads.filter(l => l.aiAnalysis && l.aiAnalysis.score < 50)}
+                                count={filteredLeads.filter(l => l.aiAnalysis && l.aiAnalysis.score < 50).length}
+                                onCardClick={setSelectedLead}
+                                color="blue"
+                            />
+                             <KanbanColumn 
+                                title="❓ Unscored" 
+                                leads={filteredLeads.filter(l => !l.aiAnalysis)}
+                                count={filteredLeads.filter(l => !l.aiAnalysis).length}
+                                onCardClick={setSelectedLead}
+                                color="gray"
+                            />
+                        </>
+                    )}
                 </div>
             ) : viewMode === 'list' ? (
-                <ListView leads={filteredLeads} onRowClick={setSelectedLead} />
+                <ListView leads={filteredLeads} onRowClick={setSelectedLead} settings={settings!} />
             ) : (
                 <MapView leads={filteredLeads} onLeadClick={setSelectedLead} />
             )}

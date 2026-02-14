@@ -120,7 +120,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
   const handleGenerateScript = async () => {
     setIsGenerating(true);
-    setActiveRightTab('notes'); // Switch to notes to show script overly logic if implemented there, but we use overlay.
+    setActiveRightTab('notes'); 
     try {
       const result = await generateCallScript(activeLead, settings, getRelevantProducts());
       setGeneratedContent({ type: 'script', content: result });
@@ -214,6 +214,9 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       window.open(`mailto:${activeLead.email || ''}?subject=${subject}&body=${body}`);
   };
 
+  const currentStatusConfig = settings.statuses.find(s => s.id === activeLead.status) || settings.statuses[0];
+  const statusColorClass = currentStatusConfig ? `bg-${currentStatusConfig.color}-900/50 text-${currentStatusConfig.color}-300 border-${currentStatusConfig.color}-800` : 'bg-slate-800 text-slate-400';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
          onClick={handleBackdropClick}
@@ -249,13 +252,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                )}
 
                <div className="flex items-center gap-2 mt-2">
-                 <span className={`px-2 py-0.5 rounded text-xs font-semibold
-                   ${activeLead.status === 'COLD' ? 'bg-blue-900/50 text-blue-300 border border-blue-800' : ''}
-                   ${activeLead.status === 'WARM' ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-800' : ''}
-                   ${activeLead.status === 'LIVE' ? 'bg-green-900/50 text-green-300 border border-green-800' : ''}
-                   ${activeLead.status === 'DEAD' ? 'bg-red-900/50 text-red-300 border border-red-800' : ''}
-                 `}>
-                   {activeLead.status}
+                 <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${statusColorClass}`}>
+                   {currentStatusConfig?.label || activeLead.status}
                  </span>
                  <span className="text-xs text-slate-500">Added {new Date(activeLead.createdAt).toLocaleDateString()}</span>
                </div>
@@ -386,17 +384,17 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3 mb-6">
             <h3 className="text-sm font-semibold text-slate-400 col-span-2">Move Status</h3>
-            {Object.values(LeadStatus).map(status => (
+            {settings.statuses.map(status => (
               <button
-                key={status}
-                onClick={() => handleStatusChange(status)}
+                key={status.id}
+                onClick={() => handleStatusChange(status.id)}
                 className={`text-xs py-2 px-3 rounded-md border font-medium transition-colors
-                  ${activeLead.status === status 
-                    ? 'border-brand-500 bg-brand-900/20 text-brand-400' 
+                  ${activeLead.status === status.id 
+                    ? `border-${status.color}-500 bg-${status.color}-900/20 text-${status.color}-400` 
                     : 'border-slate-700 bg-slate-800 text-slate-400 hover:bg-slate-700'}
                 `}
               >
-                Mark {status}
+                Mark {status.label}
               </button>
             ))}
           </div>
@@ -422,10 +420,9 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
         </div>
 
-        {/* Right Panel: Notes & Generated Content */}
+        {/* Right Panel: Notes & Generated Content - Same as before */}
         <div className="w-full md:w-1/2 flex flex-col h-[500px] md:h-auto bg-slate-800">
           
-          {/* Tabs for Right Panel */}
           <div className="flex border-b border-slate-700 bg-slate-900">
                <button 
                 onClick={() => setActiveRightTab('notes')}
@@ -540,7 +537,6 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                      </div>
                  ) : (
                      <div className="w-full space-y-6 animate-in fade-in duration-500">
-                         {/* Score Gauge */}
                          <div className="flex flex-col items-center">
                              <div className="relative w-32 h-32 flex items-center justify-center">
                                  <svg className="w-full h-full" viewBox="0 0 100 100">
