@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Phone, Mail, MapPin, Globe, Loader2, Sparkles, Send, Edit2, Save, ChevronLeft, ChevronRight, Copy, Tag, Stethoscope, Gauge, ArrowRight } from 'lucide-react';
+import { X, Phone, Mail, MapPin, Globe, Loader2, Sparkles, Send, Edit2, Save, ChevronLeft, ChevronRight, Copy, Tag, Stethoscope, Gauge, ArrowRight, Share2, Linkedin, Facebook, Twitter, Youtube, Video } from 'lucide-react';
 import { Lead, LeadStatus, Note, AppSettings, Product } from '../types';
 import { addNoteToLead, saveLead } from '../services/crmService';
-import { generateCallScript, generateEmail, analyzeLead, executePrescription } from '../services/geminiService';
+import { generateCallScript, generateEmail, analyzeLead, executePrescription, generateSocialPost } from '../services/geminiService';
 
 interface LeadModalProps {
   lead: Lead;
@@ -22,12 +22,12 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 }) => {
   const [activeLead, setActiveLead] = useState<Lead>(lead);
   const [newNote, setNewNote] = useState('');
-  const [generatedContent, setGeneratedContent] = useState<{ type: 'script' | 'email', content: string, subject?: string } | null>(null);
+  const [generatedContent, setGeneratedContent] = useState<{ type: 'script' | 'email' | 'social', content: string, subject?: string, rationale?: string } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [activeRightTab, setActiveRightTab] = useState<'notes' | 'ai'>('notes');
+  const [activeRightTab, setActiveRightTab] = useState<'notes' | 'ai' | 'marketing'>('notes');
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
 
@@ -70,7 +70,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, hasNext, hasPrev, onNext, onPrev, onClose, activeLead]); // Dependency on activeLead for closure
+  }, [isOpen, hasNext, hasPrev, onNext, onPrev, onClose, activeLead]);
 
   if (!isOpen) return null;
 
@@ -140,6 +140,17 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setGeneratedContent({ type: 'email', content: result.body, subject: result.subject });
     } catch (err) {
       setGeneratedContent({ type: 'email', content: "Failed to generate email." });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSocialPost = async (platform: 'LINKEDIN' | 'TWITTER' | 'FACEBOOK' | 'YOUTUBE' | 'TIKTOK') => {
+    setIsGenerating(true);
+    setActiveRightTab('marketing');
+    try {
+      const result = await generateSocialPost(activeLead, platform, settings);
+      setGeneratedContent({ type: 'social', content: result.content, rationale: result.rationale });
     } finally {
       setIsGenerating(false);
     }
@@ -421,7 +432,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
         </div>
 
         {/* Right Panel: Notes & Generated Content */}
-        <div className="w-full md:w-1/2 flex flex-col min-h-[500px] md:min-h-0 md:h-auto bg-slate-800">
+        <div className="w-full md:w-1/2 flex flex-col h-[500px] md:h-auto bg-slate-800">
 
           <div className="flex border-b border-slate-700 bg-slate-900">
             <button
@@ -434,7 +445,13 @@ export const LeadModal: React.FC<LeadModalProps> = ({
               onClick={() => setActiveRightTab('ai')}
               className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${activeRightTab === 'ai' ? 'border-purple-400 text-purple-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
             >
-              <Stethoscope size={16} /> AI Deal Doctor
+              <Stethoscope size={16} /> Deal Doctor
+            </button>
+            <button
+              onClick={() => setActiveRightTab('marketing')}
+              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${activeRightTab === 'marketing' ? 'border-pink-400 text-pink-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+            >
+              <Share2 size={16} /> Marketing
             </button>
           </div>
 
@@ -443,7 +460,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
               <div className="flex justify-between items-center p-4 border-b border-slate-700 bg-slate-900">
                 <h3 className="font-semibold text-indigo-300 flex items-center gap-2">
                   <Sparkles size={16} className="text-indigo-400" />
-                  {generatedContent.type === 'script' ? 'AI Generated Script' : 'AI Generated Email'}
+                  {generatedContent.type === 'script' ? 'AI Generated Script' : generatedContent.type === 'email' ? 'AI Generated Email' : 'AI Social Post'}
                 </h3>
                 <button onClick={() => setGeneratedContent(null)} className="text-xs text-indigo-400 hover:text-white">Close Overlay</button>
               </div>
@@ -458,6 +475,12 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                   <div className="prose prose-sm prose-invert max-w-none text-slate-300 whitespace-pre-wrap font-mono text-sm">
                     {generatedContent.content}
                   </div>
+                  {generatedContent.type === 'social' && generatedContent.rationale && (
+                    <div className="mt-4 pt-4 border-t border-slate-800">
+                      <span className="text-xs text-slate-500 block uppercase tracking-wider mb-1">AI Rationale</span>
+                      <p className="text-slate-400 text-xs italic">{generatedContent.rationale}</p>
+                    </div>
+                  )}
                 </div>
                 {generatedContent.type === 'email' && (
                   <div className="mt-4 flex gap-3">
@@ -472,6 +495,16 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                       className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm hover:bg-slate-600"
                     >
                       <Copy size={16} />
+                    </button>
+                  </div>
+                )}
+                {(generatedContent.type === 'script' || generatedContent.type === 'social') && (
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(generatedContent.content)}
+                      className="flex-1 px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm hover:bg-slate-600 flex items-center justify-center gap-2"
+                    >
+                      <Copy size={16} /> Copy to Clipboard
                     </button>
                   </div>
                 )}
@@ -591,6 +624,96 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                     <span className="mx-2 text-slate-700">|</span>
                     <span className="text-xs text-slate-600">Updated: {new Date(activeLead.aiAnalysis.lastUpdated).toLocaleDateString()}</span>
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeRightTab === 'marketing' && !generatedContent && (
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center">
+              <div className="text-center mt-6 mb-8">
+                <h3 className="text-lg font-bold text-white mb-2">Social Marketing</h3>
+                <p className="text-slate-400 text-sm max-w-xs mx-auto">
+                  Generate platform-specific content to engage this lead on social media.
+                </p>
+              </div>
+
+              <div className="w-full grid grid-cols-1 gap-4">
+                <button
+                  onClick={() => handleSocialPost('LINKEDIN')}
+                  disabled={isGenerating}
+                  className="bg-blue-900/30 hover:bg-blue-900/50 border border-blue-800 p-4 rounded-xl flex items-center gap-4 transition-all group text-left"
+                >
+                  <div className="bg-blue-600 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
+                    <Linkedin size={24} />
+                  </div>
+                  <div>
+                    <h4 className="text-slate-200 font-semibold text-sm">LinkedIn Professional</h4>
+                    <p className="text-slate-500 text-xs">B2B engagement & value proposition</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleSocialPost('TWITTER')}
+                  disabled={isGenerating}
+                  className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 transition-all group text-left"
+                >
+                  <div className="bg-black border border-slate-600 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
+                    <Twitter size={24} />
+                  </div>
+                  <div>
+                    <h4 className="text-slate-200 font-semibold text-sm">X / Twitter</h4>
+                    <p className="text-slate-500 text-xs">Short, snappy updates & tagging</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleSocialPost('FACEBOOK')}
+                  disabled={isGenerating}
+                  className="bg-blue-900/20 hover:bg-blue-900/40 border border-blue-900/50 p-4 rounded-xl flex items-center gap-4 transition-all group text-left"
+                >
+                  <div className="bg-blue-500 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
+                    <Facebook size={24} />
+                  </div>
+                  <div>
+                    <h4 className="text-slate-200 font-semibold text-sm">Facebook</h4>
+                    <p className="text-slate-500 text-xs">Community focused & visual</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleSocialPost('YOUTUBE')}
+                  disabled={isGenerating}
+                  className="bg-red-900/20 hover:bg-red-900/40 border border-red-900/50 p-4 rounded-xl flex items-center gap-4 transition-all group text-left"
+                >
+                  <div className="bg-red-600 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
+                    <Youtube size={24} />
+                  </div>
+                  <div>
+                    <h4 className="text-slate-200 font-semibold text-sm">YouTube Description</h4>
+                    <p className="text-slate-500 text-xs">Video content descriptions & SEO</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleSocialPost('TIKTOK')}
+                  disabled={isGenerating}
+                  className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 transition-all group text-left"
+                >
+                  <div className="bg-gradient-to-br from-cyan-400 to-pink-500 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
+                    <Video size={24} />
+                  </div>
+                  <div>
+                    <h4 className="text-slate-200 font-semibold text-sm">TikTok / Reels</h4>
+                    <p className="text-slate-500 text-xs">Short-form video scripts & captions</p>
+                  </div>
+                </button>
+              </div>
+
+              {isGenerating && (
+                <div className="mt-8 flex items-center gap-2 text-slate-400 animate-pulse">
+                  <Loader2 className="animate-spin" size={18} />
+                  <span className="text-sm">Generating content...</span>
                 </div>
               )}
             </div>

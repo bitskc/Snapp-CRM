@@ -362,9 +362,62 @@ export const parseImportData = async (rawData: string): Promise<Partial<Lead>[]>
       }
     });
 
+    const json = JSON.parse(response.text || "{}");
     return JSON.parse(response.text || "[]");
   } catch (error) {
     console.error("Error parsing import data:", error);
     return [];
   }
 };
+
+/**
+ * Generates social media posts.
+ */
+export const generateSocialPost = async (
+  lead: Lead,
+  platform: 'LINKEDIN' | 'TWITTER' | 'FACEBOOK' | 'YOUTUBE' | 'TIKTOK',
+  settings: AppSettings
+): Promise<{ content: string, rationale: string }> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `
+            You are a social media manager for "${settings.companyName}".
+            Company Desc: ${settings.companyDescription}
+            
+            Create a ${platform} post targeting the following prospect:
+            Prospect: ${lead.companyName}
+            Info: ${lead.description}
+            Location: ${lead.location}
+            
+            The goal is to get their attention or showcase how we help companies like them.
+            Adopt the tone appropriate for ${platform}.
+            
+            Return JSON:
+            {
+              "content": "The post text (include hashtags)",
+              "rationale": "Why this platform and tone works for this lead"
+            }
+          `,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            content: { type: Type.STRING },
+            rationale: { type: Type.STRING }
+          }
+        }
+      }
+    });
+
+    const json = JSON.parse(response.text || "{}");
+    return {
+      content: json.content || "Error generating post.",
+      rationale: json.rationale || ""
+    };
+  } catch (error) {
+    console.error("Error generating social post:", error);
+    return { content: "Error generating post.", rationale: "" };
+  }
+}
