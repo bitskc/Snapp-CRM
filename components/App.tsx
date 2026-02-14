@@ -11,16 +11,37 @@ import { Search, Filter, RefreshCw, MoreHorizontal, List, Kanban, CalendarClock,
 // Kanban Column Component
 const KanbanColumn: React.FC<{
   title: string;
+  statusId?: string; // Only needed if draggable
   count: number;
   leads: Lead[];
   onCardClick: (lead: Lead) => void;
+  onDrop?: (leadId: string, newStatus: string) => void;
   color: string;
-}> = ({ title, count, leads, onCardClick, color }) => {
+  isDraggable: boolean;
+}> = ({ title, statusId, count, leads, onCardClick, onDrop, color, isDraggable }) => {
   // Convert color name (e.g. 'blue') to actual tailwind classes safely if using dynamic colors
   const borderClass = color.startsWith('border-') ? color : `border-${color}-500`;
 
+  const handleDragOver = (e: React.DragEvent) => {
+      if (!isDraggable) return;
+      e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+      if (!isDraggable || !onDrop || !statusId) return;
+      e.preventDefault();
+      const leadId = e.dataTransfer.getData('leadId');
+      if (leadId) {
+          onDrop(leadId, statusId);
+      }
+  };
+
   return (
-    <div className="flex-1 min-w-[280px] bg-slate-900/50 rounded-xl p-3 flex flex-col h-full border border-slate-800/60">
+    <div 
+        className="flex-1 min-w-[280px] bg-slate-900/50 rounded-xl p-3 flex flex-col h-full border border-slate-800/60"
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+    >
       <div className={`flex items-center justify-between mb-4 pb-2 border-b ${borderClass}`}>
         <h3 className="font-semibold text-slate-300 text-sm tracking-wide uppercase">{title}</h3>
         <span className="bg-slate-800 px-2 py-0.5 rounded-full text-xs font-bold text-slate-400 shadow-sm border border-slate-700">
@@ -32,8 +53,12 @@ const KanbanColumn: React.FC<{
         {leads.map(lead => (
           <div
             key={lead.id}
+            draggable={isDraggable}
+            onDragStart={(e) => {
+                if(isDraggable) e.dataTransfer.setData('leadId', lead.id);
+            }}
             onClick={() => onCardClick(lead)}
-            className="bg-slate-800 p-4 rounded-lg shadow-sm border border-slate-700 hover:shadow-md hover:border-brand-500/50 transition-all cursor-pointer group"
+            className={`bg-slate-800 p-4 rounded-lg shadow-sm border border-slate-700 hover:shadow-md hover:border-brand-500/50 transition-all group ${isDraggable ? 'cursor-move' : 'cursor-pointer'}`}
           >
             <div className="flex justify-between items-start mb-2">
               <h4 className="font-semibold text-slate-200 line-clamp-1 group-hover:text-brand-400 transition-colors">
@@ -78,7 +103,7 @@ const KanbanColumn: React.FC<{
         ))}
         {leads.length === 0 && (
           <div className="h-24 border-2 border-dashed border-slate-800 rounded-lg flex items-center justify-center text-slate-600 text-xs">
-            No leads
+            {isDraggable ? 'Drop here' : 'No leads'}
           </div>
         )}
       </div>
@@ -186,6 +211,16 @@ export default function App() {
     setSelectedLead(updatedLead);
   };
 
+  const handleDrop = async (leadId: string, newStatus: string) => {
+      const lead = leads.find(l => l.id === leadId);
+      if (lead && lead.status !== newStatus) {
+          const updatedLead = { ...lead, status: newStatus };
+          // Optimistic update
+          setLeads(prev => prev.map(l => l.id === leadId ? updatedLead : l));
+          await saveLead(updatedLead);
+      }
+  };
+
   // Filter Logic
   const filteredLeads = leads.filter(l => {
     const matchesSearch = l.companyName.toLowerCase().includes(searchFilter.toLowerCase()) || 
@@ -231,8 +266,8 @@ export default function App() {
       
       {activeTab === 'dashboard' && (
         <div className="flex flex-col h-full bg-slate-950 relative">
-          {/* Dashboard Header - High Z-Index to stay on top */}
-          <div className="px-6 py-4 border-b border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4 relative z-[100]">
+          {/* Dashboard Header - Z-Index 40 to stay above content but below modals */}
+          <div className="px-6 py-4 border-b border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4 relative z-40 bg-slate-950">
             <div className="flex items-center gap-4 flex-1 w-full">
               <div className="relative w-full max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
@@ -249,7 +284,8 @@ export default function App() {
               </button>
             </div>
             
-            <div className="flex items-center gap-3 w-full md:w-auto relative z-20 flex-wrap md:flex-nowrap">
+            {/* Toolbar Actions - Removed overflow-x-auto to prevent clipping of dropdowns, added flex-wrap */}
+            <div className="flex items-center gap-3 w-full md:w-auto flex-wrap relative z-20">
                 <button 
                   onClick={() => setNeedsContactFilter(!needsContactFilter)}
                   className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-all whitespace-nowrap
@@ -261,8 +297,8 @@ export default function App() {
                     <CalendarClock size={16} /> Needs Contact Today
                 </button>
 
-                {/* Group By Dropdown */}
-                 <div className="relative">
+                {/* Group By Dropdown - Z-Index 50 to float above everything */}
+                 <div className="relative z-50">
                     <button 
                         onClick={() => { setIsGroupByMenuOpen(!isGroupByMenuOpen); setIsFilterMenuOpen(false); }}
                         className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-all whitespace-nowrap
@@ -293,8 +329,8 @@ export default function App() {
                     )}
                 </div>
 
-                {/* Filter Dropdown */}
-                <div className="relative">
+                {/* Filter Dropdown - Z-Index 50 to float above everything */}
+                <div className="relative z-50">
                     <button 
                         onClick={() => { setIsFilterMenuOpen(!isFilterMenuOpen); setIsGroupByMenuOpen(false); }}
                         className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-all whitespace-nowrap
@@ -359,7 +395,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Main Content Area */}
+          {/* Main Content Area - Z-Index 0 */}
           <div className="flex-1 overflow-hidden p-6 relative z-0">
             {viewMode === 'kanban' ? (
                 <div className="flex gap-4 h-full min-w-max overflow-x-auto">
@@ -367,10 +403,13 @@ export default function App() {
                         <KanbanColumn 
                             key={status.id}
                             title={status.label} 
+                            statusId={status.id}
                             leads={filteredLeads.filter(l => l.status === status.id)} 
                             count={filteredLeads.filter(l => l.status === status.id).length}
                             onCardClick={setSelectedLead}
-                            color={status.color} // pass color name, component handles class
+                            onDrop={handleDrop}
+                            color={status.color} 
+                            isDraggable={true}
                         />
                     ))}
 
@@ -382,6 +421,7 @@ export default function App() {
                                 count={filteredLeads.filter(l => l.aiAnalysis && l.aiAnalysis.score >= 80).length}
                                 onCardClick={setSelectedLead}
                                 color="green"
+                                isDraggable={false}
                             />
                             <KanbanColumn 
                                 title="☀️ Warm (50-79)" 
@@ -389,6 +429,7 @@ export default function App() {
                                 count={filteredLeads.filter(l => l.aiAnalysis && l.aiAnalysis.score >= 50 && l.aiAnalysis.score < 80).length}
                                 onCardClick={setSelectedLead}
                                 color="yellow"
+                                isDraggable={false}
                             />
                             <KanbanColumn 
                                 title="❄️ Cold (<50)" 
@@ -396,6 +437,7 @@ export default function App() {
                                 count={filteredLeads.filter(l => l.aiAnalysis && l.aiAnalysis.score < 50).length}
                                 onCardClick={setSelectedLead}
                                 color="blue"
+                                isDraggable={false}
                             />
                              <KanbanColumn 
                                 title="❓ Unscored" 
@@ -403,6 +445,7 @@ export default function App() {
                                 count={filteredLeads.filter(l => !l.aiAnalysis).length}
                                 onCardClick={setSelectedLead}
                                 color="gray"
+                                isDraggable={false}
                             />
                         </>
                     )}
