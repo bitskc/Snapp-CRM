@@ -3,7 +3,7 @@ import { useState, useCallback } from 'react';
 import { Upload, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { parseImportData } from '../services/geminiService';
 import { saveLead } from '../services/crmService';
-import { Lead } from '../types';
+import { Lead, Note } from '../types';
 import { useCRM } from '../contexts/CRMContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -13,7 +13,7 @@ export interface ImportModalProps {
 }
 
 export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
-    const { refreshData, addToast, settings } = useCRM();
+    const { refreshData, addToast, settings, leads } = useCRM();
     const { user } = useAuth();
     const [dataText, setDataText] = useState('');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -64,8 +64,29 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
         setError(null);
         let importedCount = 0;
         let failedCount = 0;
+        let skippedCount = 0;
+        const dedupKey = (l: Partial<Lead>) => [
+            (l.companyName || '').toLowerCase().trim(),
+            (l.phone || '').replace(/\D/g, ''),
+            (l.email || '').toLowerCase().trim(),
+            ((l.location || '').match(/\b\d{5}\b/)?.[0] || ''),
+        ].join('|');
+        const existingKeys = new Set(leads.map(dedupKey));
         try {
             for (const leadData of parsedLeads) {
+                const key = dedupKey(leadData);
+                if (existingKeys.has(key)) {
+                    skippedCount++;
+                    continue;
+                }
+                existingKeys.add(key);
+                const noteContent = (leadData as any)._notes;
+                const notes: Note[] = noteContent ? [{
+                    id: Math.random().toString(36).substr(2, 9),
+                    content: noteContent,
+                    createdAt: new Date().toISOString(),
+                    author: 'Import',
+                }] : [];
                 const newLead: Lead = {
                     id: Math.random().toString(36).substr(2, 9),
                     user_id: user.id,
@@ -75,7 +96,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                     website: leadData.website,
                     status: defaultStatus,
                     source: 'MANUAL',
-                    notes: [],
+                    notes,
                     productIds: [],
                     createdAt: new Date().toISOString(),
                     contactName: leadData.contactName,
@@ -91,12 +112,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                 }
             }
             await refreshData();
+            const skippedMsg = skippedCount > 0 ? ` (${skippedCount} duplicates skipped)` : '';
             if (failedCount === 0) {
-                addToast(`Successfully imported ${importedCount} leads`, "success");
+                addToast(`Successfully imported ${importedCount} leads${skippedMsg}`, "success");
             } else if (importedCount > 0) {
-                addToast(`Imported ${importedCount} leads, ${failedCount} failed`, "info");
+                addToast(`Imported ${importedCount} leads, ${failedCount} failed${skippedMsg}`, "info");
             } else {
-                addToast(`All ${failedCount} leads failed to import`, "error");
+                addToast(`All ${failedCount} leads failed to import${skippedMsg}`, "error");
             }
             handleClose();
         } catch (e) {

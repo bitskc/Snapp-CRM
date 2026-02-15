@@ -9,7 +9,7 @@ const callGateway = async (action: string, payload: any) => {
   const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
   try {
-    // Refresh session to ensure we have a valid token
+    // Refresh session to ensure the client has a valid, non-expired token
     const { data: { session }, error: sessionError } = await supabase.auth.refreshSession();
 
     if (sessionError || !session) {
@@ -18,10 +18,7 @@ const callGateway = async (action: string, payload: any) => {
 
     const { data, error } = await supabase.functions.invoke('ai-gateway', {
       body: { action, payload },
-      headers: {
-        Authorization: `Bearer ${session.access_token}`
-      },
-      signal: controller.signal
+      signal: controller.signal,
     });
 
     clearTimeout(timeoutId);
@@ -254,8 +251,26 @@ export const executePrescription = async (
 const normalizeLead = (raw: any): Partial<Lead> | null => {
   if (!raw || typeof raw !== 'object') return null;
 
-  const companyName = raw.companyName || raw.company_name || raw.name || raw.company || '';
-  if (!companyName) return null;
+  const companyName = raw.companyName || raw.company_name || raw.name || raw.company
+    || raw.business || raw.businessName || raw.business_name || raw.organization
+    || raw.company_title || raw.title || 'Unknown Company';
+
+  // Build location from granular address parts, falling back to existing location field
+  const addressParts = [
+    raw.address,
+    raw.city,
+    raw.stateProvince || raw.state_province || raw.state,
+    raw.postalCode || raw.postal_code || raw.zip,
+    raw.country,
+  ].filter(Boolean);
+  const location = raw.location || (addressParts.length > 0 ? addressParts.join(', ') : undefined);
+
+  // Build description, combining description/pitch/source
+  let description = raw.description || raw.desc || raw.about || raw.info || '';
+  const pitch = raw.pitch || raw.salesPitch || raw.sales_pitch;
+  const source = raw.source;
+  if (pitch) description += `${description ? '\n\n' : ''}Pitch: ${pitch}`;
+  if (source) description += `${description ? '\n\n' : ''}Source: ${source}`;
 
   return {
     companyName,
@@ -263,9 +278,10 @@ const normalizeLead = (raw: any): Partial<Lead> | null => {
     email: raw.email || raw.email_address || undefined,
     phone: raw.phone || raw.phone_number || raw.telephone || undefined,
     website: raw.website || raw.url || raw.web || undefined,
-    location: raw.location || raw.address || [raw.city, raw.state].filter(Boolean).join(', ') || undefined,
-    description: raw.description || raw.desc || raw.about || raw.info || undefined,
-  };
+    location: location || undefined,
+    description: description || undefined,
+    _notes: raw.notes || raw.note || raw.comments || undefined,
+  } as Partial<Lead> & { _notes?: string };
 };
 
 /**
@@ -306,8 +322,15 @@ export const parseImportData = async (rawData: string): Promise<Partial<Lead>[]>
         - email
         - phone
         - website
-        - location (city/state or address)
+        - address
+        - city
+        - stateProvince
+        - postalCode
+        - country
         - description (what they do)
+        - notes (any notes or comments)
+        - pitch (sales pitch or approach)
+        - source (where the lead came from)
 
         Return a JSON array of objects. Do NOT wrap in an outer object.
       `;

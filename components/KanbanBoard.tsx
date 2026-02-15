@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import * as React from 'react';
+import { useState } from 'react';
 import {
     DndContext,
     DragOverlay,
@@ -16,6 +17,7 @@ import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Lead, LeadStatus } from '../types';
 import { KanbanColumn } from './KanbanColumn';
 import { LeadCard } from './LeadCard';
+import { useCRM } from '../contexts/CRMContext';
 
 interface KanbanBoardProps {
     leads: Lead[];
@@ -24,17 +26,19 @@ interface KanbanBoardProps {
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads, onLeadClick, onLeadStatusChange }) => {
+    const { settings } = useCRM();
     const [activeId, setActiveId] = useState<string | null>(null);
+    const columns = settings?.statuses || [];
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: {
-                distance: 5, // 5px movement required to start drag (prevents accidental clicks)
+                distance: 5,
             }
         }),
         useSensor(TouchSensor, {
             activationConstraint: {
-                delay: 250, // Press and hold for 250ms to drag on mobile
+                delay: 250,
                 tolerance: 5,
             }
         }),
@@ -47,10 +51,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads, onLeadClick, on
         setActiveId(event.active.id as string);
     };
 
-    const handleDragOver = (event: DragOverEvent) => {
-        // We can implement real-time reordering visual feedback here if needed
-        // For now, simpler implementation relies on onDragEnd
-    };
+    const handleDragOver = (event: DragOverEvent) => { };
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
@@ -63,24 +64,20 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads, onLeadClick, on
         const activeLeadId = active.id as string;
         const overId = over.id as string;
 
-        // Find the lead being dragged
         const activeLead = leads.find(l => l.id === activeLeadId);
         if (!activeLead) {
             setActiveId(null);
             return;
         }
 
-        // Determine the new status
-        // 1. If dropped directly on a Column (the droppable ID is the status)
-        const columns: LeadStatus[] = ['COLD', 'WARM', 'LIVE', 'DEAD'];
-        if (columns.includes(overId as LeadStatus)) {
+        // Check if dropped on a status column
+        const isStatusColumn = columns.some(s => s.id === overId);
+        if (isStatusColumn) {
             if (activeLead.status !== overId) {
                 onLeadStatusChange(activeLeadId, overId as LeadStatus);
             }
         }
-        // 2. If dropped on another Card
         else {
-            // Find the lead we dropped ON
             const overLead = leads.find(l => l.id === overId);
             if (overLead && activeLead.status !== overLead.status) {
                 onLeadStatusChange(activeLeadId, overLead.status);
@@ -90,8 +87,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads, onLeadClick, on
         setActiveId(null);
     };
 
-    const getLeadsByStatus = (status: LeadStatus) => {
-        return leads.filter(l => l.status === status);
+    const getLeadsByStatus = (statusId: string) => {
+        return leads.filter(l => l.status === statusId);
     };
 
     const activeLead = activeId ? leads.find(l => l.id === activeId) : null;
@@ -105,46 +102,18 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads, onLeadClick, on
             onDragEnd={handleDragEnd}
         >
             <div className="flex flex-row gap-4 h-full p-4 overflow-x-auto snap-x snap-mandatory touch-pan-x bg-slate-950">
-                <div className="snap-center w-[85vw] md:w-80 flex-shrink-0 h-full">
-                    <KanbanColumn
-                        id="COLD"
-                        title="COLD"
-                        count={getLeadsByStatus('COLD').length}
-                        leads={getLeadsByStatus('COLD')}
-                        onCardClick={onLeadClick}
-                        color="blue"
-                    />
-                </div>
-                <div className="snap-center w-[85vw] md:w-80 flex-shrink-0 h-full">
-                    <KanbanColumn
-                        id="WARM"
-                        title="WARM"
-                        count={getLeadsByStatus('WARM').length}
-                        leads={getLeadsByStatus('WARM')}
-                        onCardClick={onLeadClick}
-                        color="yellow"
-                    />
-                </div>
-                <div className="snap-center w-[85vw] md:w-80 flex-shrink-0 h-full">
-                    <KanbanColumn
-                        id="LIVE"
-                        title="LIVE"
-                        count={getLeadsByStatus('LIVE').length}
-                        leads={getLeadsByStatus('LIVE')}
-                        onCardClick={onLeadClick}
-                        color="green"
-                    />
-                </div>
-                <div className="snap-center w-[85vw] md:w-80 flex-shrink-0 h-full">
-                    <KanbanColumn
-                        id="DEAD"
-                        title="DEAD"
-                        count={getLeadsByStatus('DEAD').length}
-                        leads={getLeadsByStatus('DEAD')}
-                        onCardClick={onLeadClick}
-                        color="red"
-                    />
-                </div>
+                {columns.map(status => (
+                    <div key={status.id} className="snap-center w-[85vw] md:w-80 flex-shrink-0 h-full">
+                        <KanbanColumn
+                            id={status.id}
+                            title={status.label}
+                            count={getLeadsByStatus(status.id).length}
+                            leads={getLeadsByStatus(status.id)}
+                            onCardClick={onLeadClick}
+                            color={status.color as any}
+                        />
+                    </div>
+                ))}
             </div>
 
             <DragOverlay>

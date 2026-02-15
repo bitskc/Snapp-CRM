@@ -1,6 +1,23 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Save, Sparkles, Plus, Trash2, Database, Loader2, Edit2, GripVertical, Check } from 'lucide-react';
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragEndEvent
+} from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    verticalListSortingStrategy,
+    useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { AppSettings, Product, StatusConfig } from '../types';
 import { generateProductDescription } from '../services/geminiService';
 import { useCRM } from '../contexts/CRMContext';
@@ -42,6 +59,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
     const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
     const [isSaving, setIsSaving] = useState(false);
     const [activeTab, setActiveTab] = useState<'general' | 'products' | 'statuses'>('general');
+
+    const sensors = useSensors(
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
+
+    // Sync local state when external settings change
+    useEffect(() => {
+        setLocalSettings(settings);
+    }, [settings]);
 
     // Product State
     const [newProduct, setNewProduct] = useState<Partial<Product>>({});
@@ -124,16 +153,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
         }));
     };
 
-    const handleMoveStatus = (index: number, direction: 'up' | 'down') => {
-        const newStatuses = [...localSettings.statuses];
-        if (direction === 'up' && index > 0) {
-            [newStatuses[index], newStatuses[index - 1]] = [newStatuses[index - 1], newStatuses[index]];
-        } else if (direction === 'down' && index < newStatuses.length - 1) {
-            [newStatuses[index], newStatuses[index + 1]] = [newStatuses[index + 1], newStatuses[index]];
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (over && active.id !== over.id) {
+            const oldIndex = localSettings.statuses.findIndex(s => s.id === active.id);
+            const newIndex = localSettings.statuses.findIndex(s => s.id === over.id);
+            const reordered = arrayMove(localSettings.statuses, oldIndex, newIndex);
+
+            // Update order property
+            const withNewOrder = reordered.map((s, i) => ({ ...s, order: i }));
+            setLocalSettings(prev => ({ ...prev, statuses: withNewOrder }));
         }
-        // Re-index order
-        newStatuses.forEach((s, i) => s.order = i);
-        setLocalSettings(prev => ({ ...prev, statuses: newStatuses }));
     };
 
     return (
@@ -240,19 +270,24 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
                             <h3 className="text-lg font-semibold text-white mb-4">Pipeline Statuses</h3>
                             <div className="space-y-2 mb-6">
-                                {localSettings.statuses.map((status, index) => (
-                                    <div key={status.id} className="flex items-center gap-3 bg-slate-800 p-3 rounded-lg border border-slate-700 group">
-                                        <div className="flex flex-col gap-1 text-slate-500">
-                                            <button onClick={() => handleMoveStatus(index, 'up')} disabled={index === 0} className="hover:text-slate-300 disabled:opacity-20"><GripVertical size={12} /></button>
-                                        </div>
-                                        <div className={`w-4 h-4 rounded-full ${getStatusColorClass(status.color)} shadow`}></div>
-                                        <span className="font-medium text-slate-200 flex-1">{status.label}</span>
-                                        <span className="text-xs text-slate-500 font-mono">{status.id}</span>
-                                        <button onClick={() => handleDeleteStatus(status.id)} className="text-slate-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                ))}
+                                <DndContext
+                                    sensors={sensors}
+                                    collisionDetection={closestCenter}
+                                    onDragEnd={handleDragEnd}
+                                >
+                                    <SortableContext
+                                        items={localSettings.statuses.map(s => s.id)}
+                                        strategy={verticalListSortingStrategy}
+                                    >
+                                        {localSettings.statuses.map((status, index) => (
+                                            <SortableStatusItem
+                                                key={status.id}
+                                                status={status}
+                                                onDelete={handleDeleteStatus}
+                                            />
+                                        ))}
+                                    </SortableContext>
+                                </DndContext>
                             </div>
 
                             <div className="border-t border-slate-800 pt-4">
@@ -391,6 +426,53 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                     </div>
                 )}
             </div>
+        </div>
+    );
+};
+
+interface SortableStatusItemProps {
+    status: StatusConfig;
+    onDelete: (id: string) => void;
+}
+
+const SortableStatusItem: React.FC<SortableStatusItemProps> = ({ status, onDelete }) => {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging
+    } = useSortable({ id: status.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 50 : undefined,
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className={`flex items-center gap-3 bg-slate-800 p-3 rounded-lg border border-slate-700 group ${isDragging ? 'ring-2 ring-brand-500 bg-slate-700 shadow-xl opacity-90' : ''}`}
+        >
+            <div
+                {...attributes}
+                {...listeners}
+                className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-300 p-1"
+            >
+                <GripVertical size={16} />
+            </div>
+            <div className={`w-4 h-4 rounded-full ${getStatusColorClass(status.color)} shadow flex-shrink-0`}></div>
+            <span className="font-medium text-slate-200 flex-1 truncate">{status.label}</span>
+            <span className="text-xs text-slate-500 font-mono hidden md:inline">{status.id}</span>
+            <button
+                onClick={() => onDelete(status.id)}
+                className="text-slate-500 hover:text-red-400 p-1 md:opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+                <Trash2 size={16} />
+            </button>
         </div>
     );
 };

@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.21.0"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+
+function parseJsonResponse(text: string): unknown {
+    const cleaned = text.replace(/```json\n?|\n?```/g, '').trim()
+    return JSON.parse(cleaned)
+}
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -27,17 +33,21 @@ serve(async (req) => {
 
         const token = authHeader.replace('Bearer ', '')
 
-        // Basic token validation - check if it's a valid JWT format (3 parts separated by dots)
-        const tokenParts = token.split('.')
-        if (tokenParts.length !== 3) {
-            console.error('[Auth Error] Invalid token format')
-            return new Response(JSON.stringify({ error: 'Invalid token format' }), {
+        // Validate token with Supabase auth
+        const supabase = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_ANON_KEY')!,
+        )
+        const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+        if (authError || !user) {
+            console.error('[Auth Error] Token validation failed:', authError?.message)
+            return new Response(JSON.stringify({ error: 'Invalid or expired token' }), {
                 status: 401,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             })
         }
 
-        console.log('[Auth Debug] Token format valid, proceeding...')
+        console.log('[Auth Debug] Token valid for user:', user.id)
 
         // 2. Parse Request Body
         const body = await req.json().catch(e => {
@@ -79,7 +89,7 @@ serve(async (req) => {
                     contents: [{ role: 'user', parts: [{ text: prompt }] }],
                     generationConfig: { responseMimeType: 'application/json' }
                 })
-                result = JSON.parse(response.response.text())
+                result = parseJsonResponse(response.response.text())
                 break
             }
 
@@ -99,7 +109,7 @@ serve(async (req) => {
                     contents: [{ role: 'user', parts: [{ text: payload.prompt }] }],
                     generationConfig: { responseMimeType: 'application/json' }
                 })
-                result = JSON.parse(response.response.text())
+                result = parseJsonResponse(response.response.text())
                 break
             }
 
@@ -109,7 +119,7 @@ serve(async (req) => {
                     contents: [{ role: 'user', parts: [{ text: payload.prompt }] }],
                     generationConfig: { responseMimeType: 'application/json' }
                 })
-                result = JSON.parse(response.response.text())
+                result = parseJsonResponse(response.response.text())
                 break
             }
 
@@ -123,7 +133,7 @@ serve(async (req) => {
 
     } catch (error) {
         console.error('AI Gateway Error:', error)
-        return new Response(JSON.stringify({ error: error.message }), {
+        return new Response(JSON.stringify({ error: 'Internal AI processing error' }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
