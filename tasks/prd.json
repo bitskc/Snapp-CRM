@@ -1,0 +1,196 @@
+{
+  "project": "ServiceSnapp CRM",
+  "branchName": "ralph/daily-sales-plan",
+  "description": "Daily Sales Plan — AI-powered guided action queue that scans the pipeline, generates prioritized sales actions with pre-generated content, and auto-logs completed actions as notes",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Autopilot types and interfaces",
+      "description": "As a developer, I need TypeScript types for the autopilot queue system so all components share a consistent data contract.",
+      "acceptanceCriteria": [
+        "Add AutopilotAction interface to types.ts with fields: id (string), leadId (string), leadName (string), contactName (string optional), email (string optional), phone (string optional), actionType ('email' | 'call' | 'social' | 'note'), priority (number 1-10), reasoning (string), content (string optional — filled lazily), status ('pending' | 'completed' | 'skipped')",
+        "Add AutopilotQueue interface to types.ts: generatedAt (ISO string), actions (AutopilotAction[])",
+        "Add optional autopilotStatuses field (string[]) to the existing AppSettings interface in types.ts",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Autopilot settings — configurable statuses",
+      "description": "As a user, I want to choose which pipeline statuses are included in the Daily Sales Plan so that I only see actions for leads I'm actively working.",
+      "acceptanceCriteria": [
+        "Add an Autopilot section to the Settings page (components/SettingsPage.tsx) within the General settings area, showing checkboxes for each configured pipeline status",
+        "Selected statuses are saved via the existing updateSettings flow using the new autopilotStatuses field on AppSettings",
+        "Default: all statuses except the last one (typically DEAD) are selected when autopilotStatuses is undefined/null",
+        "Update fetchSettings in services/crmService.ts to read autopilot_statuses from the settings row and map to autopilotStatuses on AppSettings",
+        "Update saveSettings in services/crmService.ts to write autopilot_statuses to the settings row from settings.autopilotStatuses",
+        "Typecheck passes",
+        "Verify in browser"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Client-side lead pre-filtering utility",
+      "description": "As a developer, I need a utility function that filters and ranks leads for autopilot queue generation, so only the most relevant leads are sent to the AI.",
+      "acceptanceCriteria": [
+        "Create utils/autopilotHelpers.ts with a preFilterLeads(leads: Lead[], settings: AppSettings) function",
+        "Filters out leads whose status is not in settings.autopilotStatuses (default to all statuses except the last if autopilotStatuses is undefined)",
+        "Filters out leads that have a note with today's date (new Date(note.createdAt).toDateString() === new Date().toDateString())",
+        "Ranks remaining leads by: days since last contact descending, matchScore descending (default 0), noteCount ascending",
+        "Returns top 60 leads as compact summaries: { id, companyName, status, matchScore, daysSinceLastContact, noteCount, description } where description is truncated to 100 chars",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Queue generation via AI (Pass 1 — stubs)",
+      "description": "As a user, I want the system to analyze my pipeline and generate a prioritized list of action stubs so I know exactly what to do next.",
+      "acceptanceCriteria": [
+        "Add generate_queue case to the switch in supabase/functions/ai-gateway/index.ts that accepts payload.leadSummaries and payload.companyContext, sends a prompt to Gemini requesting prioritized action stubs, and returns JSON array of stubs",
+        "AI prompt instructs: return max 20 actions, max 2 per lead, each stub has leadId, leadName, actionType (email|call|social|note), priority (1-10), reasoning (1 sentence). Use responseMimeType: 'application/json'",
+        "Add generateActionQueue(leadSummaries, settings, products) function in services/geminiService.ts that calls callGateway('generate_queue', ...) and returns AutopilotAction[] with id generated via Math.random().toString(36), content set to undefined, status set to 'pending'",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Action content generation via AI (Pass 2 — on-demand)",
+      "description": "As a user, I want the system to generate the full content for an action when I'm ready to work on it, so content is fresh and context-specific.",
+      "acceptanceCriteria": [
+        "Add generate_action_content case to the switch in supabase/functions/ai-gateway/index.ts that accepts payload.prompt and returns generated content as JSON, using responseMimeType: 'application/json'",
+        "Add generateActionContent(lead, actionType, settings, products) function in services/geminiService.ts that builds an appropriate prompt based on actionType and calls callGateway('generate_action_content', ...)",
+        "For email actionType: returns { subject: string, body: string }. For call: returns { script: string }. For social: returns { content: string, rationale: string }. For note: returns { content: string }",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "useAutopilotQueue hook — queue state management",
+      "description": "As a developer, I need a custom hook that manages the autopilot queue lifecycle (load, generate, complete, snooze, persist) independently from CRMContext.",
+      "acceptanceCriteria": [
+        "Create hooks/useAutopilotQueue.ts exporting useAutopilotQueue() hook",
+        "Hook reads leads, settings, products from useCRM() context",
+        "Stores queue in localStorage under key 'autopilot-queue' as JSON string of AutopilotQueue shape",
+        "On mount: loads queue from localStorage if it exists, has pending actions (status === 'pending'), and generatedAt is less than 24 hours old",
+        "generateQueue() method: calls preFilterLeads then generateActionQueue, wraps result in AutopilotQueue with generatedAt = new Date().toISOString(), saves to localStorage",
+        "completeAction(actionId, summary) method: marks action status as 'completed', calls addNoteToLead(action.leadId, 'Autopilot: ' + summary), updates localStorage",
+        "snoozeAction(actionId) method: removes action from current position and appends to end of actions array with status still 'pending', updates localStorage",
+        "refreshQueue() method: forces regeneration regardless of pending actions",
+        "setActionContent(actionId, content) method: sets the content field on the matching action",
+        "Exposes: queue (AutopilotQueue | null), pendingActions (AutopilotAction[]), pendingCount (number), isGenerating (boolean), currentAction (first pending action or null), generateQueue, completeAction, snoozeAction, refreshQueue, setActionContent",
+        "Listens to window 'storage' event to sync queue state across tabs",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "This hook imports from services/geminiService, services/crmService, utils/autopilotHelpers, and contexts/CRMContext"
+    },
+    {
+      "id": "US-007",
+      "title": "Autopilot page — queue display",
+      "description": "As a user, I want to see my action queue as a clear, ordered list so I can work through it top to bottom.",
+      "acceptanceCriteria": [
+        "Create components/AutopilotPage.tsx as the main component for the Daily Sales Plan page",
+        "Create pages/Autopilot.tsx as a thin wrapper that renders AutopilotPage",
+        "Add Route path='/autopilot' element={<AutopilotPageRoute />} in App.tsx inside the Routes block, importing the page",
+        "Page uses useAutopilotQueue() hook for all queue state",
+        "Shows queue as a vertical list of action cards ordered by priority",
+        "Each card shows: lead company name, action type icon (Phone for call, Mail for email, Share2 for social, FileText for note — all from lucide-react), priority indicator (colored dot), reasoning (1 line), and a 'Start' button",
+        "Queue summary at top: 'X actions remaining' with a progress bar showing completed/total ratio",
+        "Empty state when queue is empty: 'All caught up! 🎉' message with a 'Generate New Queue' button",
+        "Loading state with skeleton/pulse placeholder cards while isGenerating is true",
+        "Refresh Queue button in header that calls refreshQueue(), disabled while isGenerating",
+        "Typecheck passes",
+        "Verify in browser"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Follow existing component patterns: named export, React.FC, Tailwind dark theme with slate palette"
+    },
+    {
+      "id": "US-008",
+      "title": "Action execution view",
+      "description": "As a user, I want to see the pre-generated content for an action and execute it in one click so I can move fast.",
+      "acceptanceCriteria": [
+        "When user clicks Start on a queue card in AutopilotPage, the view expands inline to show the full action detail panel",
+        "On expand, if action.content is empty/undefined, call generateActionContent with the lead data (look up lead from leads array by action.leadId) and show a Loader2 spinner until content arrives, then call setActionContent to cache it",
+        "Show: lead name, contact info (phone as tel: link, email as mailto: link), action type label, AI reasoning, and the full generated content rendered as text",
+        "Copy to Clipboard button that calls navigator.clipboard.writeText() with the content and shows a toast via addToast",
+        "Mark Complete button: calls completeAction(actionId, summary) where summary is a short description like 'Sent follow-up email to [companyName]', then auto-advances to next pending action",
+        "Snooze button: calls snoozeAction(actionId), advances to next pending action",
+        "Regenerate button: re-calls generateActionContent for this action, replaces content, shows loading during regeneration",
+        "After completing/snoozing, automatically shows the next pending action (currentAction from hook)",
+        "Typecheck passes",
+        "Verify in browser"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "The execution view is part of AutopilotPage.tsx, not a separate route. Look up the full lead object from CRMContext leads array using action.leadId."
+    },
+    {
+      "id": "US-009",
+      "title": "Navigation badge for Daily Sales Plan",
+      "description": "As a user, I want to see a badge on the Daily Sales Plan nav item showing how many actions are pending so I know at a glance if I have work to do.",
+      "acceptanceCriteria": [
+        "Add Daily Sales Plan nav button in components/Layout.tsx using the Zap icon from lucide-react, positioned between Lead Finder AI and Settings in both desktop sidebar and mobile bottom nav",
+        "Nav button navigates to /autopilot on click",
+        "Use useAutopilotQueue() hook in Layout to get pendingCount",
+        "Show a numeric badge (small circle, bg-brand-500 background, white text, text-[10px] font-bold) when pendingCount > 0, positioned as a superscript on the nav item",
+        "Badge is hidden when pendingCount is 0",
+        "Update getActiveTab() to return 'autopilot' when location.pathname starts with '/autopilot'",
+        "Apply active styling (bg-slate-800 text-brand-400 border border-slate-700) when activeTab is 'autopilot'",
+        "Typecheck passes",
+        "Verify in browser"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "The Layout component will need to import useAutopilotQueue from hooks/useAutopilotQueue"
+    },
+    {
+      "id": "US-010",
+      "title": "Auto-generate queue on app load",
+      "description": "As a user, I want the queue to generate automatically when I open the app so actions are ready when I navigate to the Daily Sales Plan page.",
+      "acceptanceCriteria": [
+        "In useAutopilotQueue hook: add a useEffect that runs on mount (after leads and settings are loaded) — if no valid queue exists (null, empty pending actions, or generatedAt older than 24 hours), call generateQueue() automatically",
+        "If a valid queue with pending actions exists and is less than 24 hours old, do nothing (keep existing queue from localStorage)",
+        "Generation runs silently with no UI side effects outside the Autopilot page — isGenerating flag is set but no toasts or spinners appear elsewhere",
+        "The pending count exposed by the hook updates when generation completes, which triggers the badge in Layout to appear",
+        "Guard against generating when leads array is empty (wait for CRM data to load first)",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "This behavior is inside the existing useAutopilotQueue hook from US-006. The useEffect should depend on leads.length and settings to avoid firing before data loads."
+    },
+    {
+      "id": "US-011",
+      "title": "Queue invalidation for deleted/changed leads",
+      "description": "As a developer, I need the queue to gracefully handle leads that were deleted or moved to excluded statuses after the queue was generated.",
+      "acceptanceCriteria": [
+        "In useAutopilotQueue hook or in AutopilotPage rendering: when computing pendingActions, check if each action's leadId exists in the current leads array from CRMContext",
+        "If a lead was deleted (not found in leads array), automatically mark the action status as 'skipped' and do not display it",
+        "If a lead's status changed to one not in settings.autopilotStatuses, show the action card grayed out (opacity-50) with a small note 'Lead status changed' and only show a Snooze button (no Start)",
+        "Update pendingCount to exclude invalidated actions",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "This can be a computed/memoized value derived from queue.actions + leads + settings in the hook"
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+{
+    "project": "ServiceSnapp CRM",
+    "branchName": "ralph/growth-lab",
+    "description": "Growth Lab - Theme-driven B2B SaaS marketing engine for ServiceSnapp.",
+    "userStories": [
+        {
+            "id": "US-001",
+            "title": "Growth Lab Database Schema",
+            "description": "As a developer, I need to store campaign themes, ideas, and outreach opportunities.",
+            "acceptanceCriteria": [
+                "Create growth_settings table (user_id, current_theme, updated_at)",
+                "Create growth_concepts table (id, topic, theme_snapshot, status)",
+                "Create growth_posts table (id, concept_id, platform, content)",
+                "Create engagement_opportunities table (id, user_id, query_url, suggested_reply, status)",
+                "Typecheck passes"
+            ],
+            "priority": 1,
+            "passes": true,
+            "notes": ""
+        },
+        {
+            "id": "US-002",
+            "title": "Weekly Theme Logic & Nixing",
+            "description": "As a user, I want the AI to suggest a weekly strategic theme that I can approve or replace.",
+            "acceptanceCriteria": [
+                "Implement generateWeeklyTheme() in geminiService",
+                "UI allows user to trigger a re-suggest (nix current theme)",
+                "Theme is persisted to growth_settings",
+                "Typecheck passes",
+                "Verify in browser using dev-browser skill"
+            ],
+            "priority": 2,
+            "passes": true,
+            "notes": ""
+        },
+        {
+            "id": "US-003",
+            "title": "Campaign-Aligned Daily Sparks",
+            "description": "As a user, I want 3-4 raw marketing ideas daily that align with my weekly theme.",
+            "acceptanceCriteria": [
+                "Implement generateDailySparks(activeTheme) in crmService",
+                "Prompts ensure alignment with the Weekly Theme and B2B SaaS persona",
+                "Typecheck passes"
+            ],
+            "priority": 3,
+            "passes": true,
+            "notes": ""
+        },
+        {
+            "id": "US-004",
+            "title": "Idea Triage Dashboard",
+            "description": "As a user, I want to see raw ideas as cards and decide which to 'Kill' or 'Ignite'.",
+            "acceptanceCriteria": [
+                "Build GrowthIdeation component",
+                "Kill action archives the concept",
+                "Ignite action moves concept to the Forge stage",
+                "Typecheck passes",
+                "Verify in browser using dev-browser skill"
+            ],
+            "priority": 4,
+            "passes": true,
+            "notes": ""
+        },
+        {
+            "id": "US-005",
+            "title": "Platform Expansion (The Forge)",
+            "description": "As a user, I want to generate platform-specific post kits once an idea is ignited.",
+            "acceptanceCriteria": [
+                "Implement expandConcept(conceptId, platform) for LinkedIn and X",
+                "LinkedIn content is professional/long-form; X content is punchy/thread-ready",
+                "Typecheck passes"
+            ],
+            "priority": 5,
+            "passes": true,
+            "notes": ""
+        },
+        {
+            "id": "US-006",
+            "title": "Post Kit UI & Clipboard Actions",
+            "description": "As a user, I want to review my forge kits and copy them to my clipboard.",
+            "acceptanceCriteria": [
+                "UI displays generated posts for the selected platform",
+                "Copy to Clipboard button works for text and hashtags",
+                "Typecheck passes",
+                "Verify in browser using dev-browser skill"
+            ],
+            "priority": 6,
+            "passes": true,
+            "notes": ""
+        },
+        {
+            "id": "US-007",
+            "title": "Outreach Search Link Generator (The Pulse)",
+            "description": "As a user, I want pre-filled search links for Reddit/X based on my active theme.",
+            "acceptanceCriteria": [
+                "AI generates query_url matching theme-related pain points",
+                "Search links open in new tabs",
+                "Typecheck passes"
+            ],
+            "priority": 7,
+            "passes": true,
+            "notes": ""
+        },
+        {
+            "id": "US-008",
+            "title": "Value-First Reply Templates",
+            "description": "As a user, I want suggested replies for outreach that don't sound like spam.",
+            "acceptanceCriteria": [
+                "AI generates 3 distinct 'human-first' replies for each opportunity",
+                "Templates prioritize solving the user's problem over pitching the product",
+                "Typecheck passes"
+            ],
+            "priority": 8,
+            "passes": true,
+            "notes": ""
+        },
+        {
+            "id": "US-009",
+            "title": "Outreach Tracking UI",
+            "description": "As a user, I want to track which outreach opportunities I have completed.",
+            "acceptanceCriteria": [
+                "Checklist interface for engagement opportunities",
+                "Marking 'Done' increments the reply counter metric",
+                "Typecheck passes",
+                "Verify in browser using dev-browser skill"
+            ],
+            "priority": 9,
+            "passes": true,
+            "notes": ""
+        },
+        {
+            "id": "US-010",
+            "title": "Growth Lab Routing & Layout",
+            "description": "As a user, I want a dedicated section of the app to manage my growth experiments.",
+            "acceptanceCriteria": [
+                "Add /growth-lab route",
+                "Sidebar/Navigation includes Growth Lab link",
+                "Dashboard shows weekly theme and key metrics",
+                "Typecheck passes",
+                "Verify in browser using dev-browser skill"
+            ],
+            "priority": 10,
+            "passes": true,
+            "notes": "Implemented and verified. Navigation and routing are fully functional."
+        }
+    ]
+}

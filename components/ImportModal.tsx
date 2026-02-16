@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState, useCallback } from 'react';
 import { Upload, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { parseImportData } from '../services/geminiService';
+import { parseImportText } from '../services/importParser';
 import { saveLead } from '../services/crmService';
 import { Lead, Note } from '../types';
 import { useCRM } from '../contexts/CRMContext';
@@ -44,14 +45,21 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
         setIsAnalyzing(true);
         setError(null);
         try {
-            const leads = await parseImportData(dataText);
+            // Try deterministic CSV/TSV parser first (instant)
+            let leads = parseImportText(dataText);
+            
+            // Fall back to AI parsing for unstructured data
+            if (leads.length === 0) {
+                leads = await parseImportData(dataText);
+            }
+            
             if (leads.length === 0) {
                 setError("No valid leads could be parsed. Please check the format.");
             } else {
                 setParsedLeads(leads);
             }
         } catch (e: any) {
-            setError(e.message || "Failed to analyze data via AI. Please try again.");
+            setError(e.message || "Failed to parse data. Please try again.");
             console.error(e);
         } finally {
             setIsAnalyzing(false);
@@ -147,8 +155,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                     {!parsedLeads.length ? (
                         <div className="space-y-4">
                             <p className="text-sm text-slate-400">
-                                Paste your lead data below (CSV, messy text, spreadsheet rows).
-                                The AI will automatically figure out which columns are which.
+                                Paste your lead data below (CSV, tab-separated, or unstructured text).
                             </p>
                             <textarea
                                 className="w-full h-64 bg-slate-950 border border-slate-700 rounded-lg p-4 text-sm font-mono text-slate-300 focus:outline-none focus:border-brand-500 transition-colors resize-none"
@@ -178,20 +185,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-800">
-                                        {parsedLeads.slice(0, 5).map((l, i) => (
+                                        {parsedLeads.map((l, i) => (
                                             <tr key={i}>
                                                 <td className="p-3 font-medium text-slate-200">{l.companyName}</td>
                                                 <td className="p-3 truncate max-w-[150px]">{l.location || l.description}</td>
                                                 <td className="p-3">{l.contactName || l.email}</td>
                                             </tr>
                                         ))}
-                                        {parsedLeads.length > 5 && (
-                                            <tr>
-                                                <td colSpan={3} className="p-3 text-center text-xs text-slate-600 italic">
-                                                    ...and {parsedLeads.length - 5} more
-                                                </td>
-                                            </tr>
-                                        )}
                                     </tbody>
                                 </table>
                             </div>

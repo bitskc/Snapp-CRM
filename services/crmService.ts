@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Lead, Note, AppSettings, Product, StatusConfig } from '../types';
+import { Lead, Note, AppSettings, Product, StatusConfig, GrowthSettings, GrowthConcept, GrowthPost, EngagementOpportunity } from '../types';
 
 const DEFAULT_STATUSES: StatusConfig[] = [
   { id: 'COLD', label: 'Cold', color: 'blue', order: 0 },
@@ -19,27 +19,43 @@ const DEFAULT_SETTINGS: AppSettings = {
 // --- Utilities ---
 
 const geocodeCache: Record<string, { lat: number, lon: number }> = {};
+let geocodeChain: Promise<void> = Promise.resolve();
+const GEOCODE_MIN_DELAY = 1100; // Nominatim policy is 1 req/sec
 
-const geocodeLocation = async (location: string): Promise<{ lat: number, lon: number } | null> => {
-  if (geocodeCache[location]) return geocodeCache[location];
+const geocodeLocation = (location: string): Promise<{ lat: number, lon: number } | null> => {
+  if (!location) return Promise.resolve(null);
+  if (geocodeCache[location]) return Promise.resolve(geocodeCache[location]);
 
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&limit=1`;
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'ServiceSnappCRM-Demo'
+  const result = new Promise<{ lat: number, lon: number } | null>((resolve) => {
+    geocodeChain = geocodeChain.then(async () => {
+      // Check cache again in case a queued request already resolved this location
+      if (geocodeCache[location]) {
+        resolve(geocodeCache[location]);
+        return;
       }
+
+      await new Promise(r => setTimeout(r, GEOCODE_MIN_DELAY));
+
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&limit=1`;
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'ServiceSnappCRM-Demo' }
+        });
+        const data = await res.json();
+        if (data && data.length > 0) {
+          const coords = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+          geocodeCache[location] = coords;
+          resolve(coords);
+          return;
+        }
+      } catch (e) {
+        console.warn("Geocoding failed for", location, e);
+      }
+      resolve(null);
     });
-    const data = await res.json();
-    if (data && data.length > 0) {
-      const coords = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
-      geocodeCache[location] = coords;
-      return coords;
-    }
-  } catch (e) {
-    console.warn("Geocoding failed for", location, e);
-  }
-  return null;
+  });
+
+  return result;
 };
 
 // --- Leads ---
@@ -184,6 +200,153 @@ export const deleteLead = async (leadId: string): Promise<void> => {
   if (error) throw error;
 };
 
+// --- Growth Lab ---
+
+export const fetchGrowthSettings = async (): Promise<GrowthSettings | null> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from('growth_settings')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data;
+};
+
+export const saveGrowthSettings = async (settings: Partial<GrowthSettings>): Promise<void> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { error } = await supabase
+    .from('growth_settings')
+    .upsert({
+      user_id: user.id,
+      ...settings,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+
+  if (error) throw error;
+};
+
+export const fetchGrowthConcepts = async (status?: string): Promise<GrowthConcept[]> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  let query = supabase
+    .from('growth_concepts')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  const { data, error } = await query;
+  if (error) return [];
+  return data || [];
+};
+
+export const saveGrowthConcept = async (concept: Partial<GrowthConcept>): Promise<GrowthConcept> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('growth_concepts')
+    .upsert({
+      id: concept.id,
+      user_id: user.id,
+      topic: concept.topic,
+      theme_snapshot: concept.theme_snapshot,
+      status: concept.status || 'RAW',
+      created_at: concept.created_at || new Date().toISOString()
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+export const fetchGrowthPosts = async (conceptId: string): Promise<GrowthPost[]> => {
+  const { data, error } = await supabase
+    .from('growth_posts')
+    .select('*')
+    .eq('concept_id', conceptId);
+
+  if (error) return [];
+  return data || [];
+};
+
+export const saveGrowthPost = async (post: Partial<GrowthPost>): Promise<GrowthPost> => {
+  const { data, error } = await supabase
+    .from('growth_posts')
+    .upsert({
+      id: post.id,
+      concept_id: post.concept_id,
+      platform: post.platform,
+      content: post.content,
+      status: post.status || 'DRAFT',
+      created_at: post.created_at || new Date().toISOString()
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+export const deleteGrowthPost = async (postId: string): Promise<void> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { error } = await supabase
+    .from('growth_posts')
+    .delete()
+    .eq('id', postId);
+
+  if (error) throw error;
+};
+
+export const fetchEngagementOpportunities = async (): Promise<EngagementOpportunity[]> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from('engagement_opportunities')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (error) return [];
+  return data || [];
+};
+
+export const saveEngagementOpportunity = async (opp: Partial<EngagementOpportunity>): Promise<EngagementOpportunity> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('engagement_opportunities')
+    .upsert({
+      id: opp.id,
+      user_id: user.id,
+      query_url: opp.query_url,
+      theme_focus: opp.theme_focus,
+      suggested_reply: opp.suggested_reply,
+      status: opp.status || 'NEW',
+      created_at: opp.created_at || new Date().toISOString()
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
 export const addNoteToLead = async (leadId: string, content: string): Promise<Note> => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
@@ -219,7 +382,9 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     .from('settings')
     .select('*')
     .eq('user_id', user.id)
-    .maybeSingle(); // Don't throw if not found
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   if (error || !data) {
     return { ...DEFAULT_SETTINGS, user_id: user.id };
@@ -232,7 +397,8 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     companyDescription: data.company_description || '',
     aboutMe: data.about_me || '',
     statuses: data.statuses || DEFAULT_STATUSES,
-    sheetUrl: data.sheet_url || ''
+    sheetUrl: data.sheet_url || '',
+    autopilotStatuses: data.autopilot_statuses
   };
 };
 
@@ -240,22 +406,25 @@ export const saveSettings = async (settings: AppSettings): Promise<AppSettings> 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
+  const payload = {
+    user_id: user.id,
+    statuses: settings.statuses,
+    company_name: settings.companyName,
+    company_description: settings.companyDescription,
+    about_me: settings.aboutMe,
+    sheet_url: settings.sheetUrl,
+    autopilot_statuses: settings.autopilotStatuses,
+    updated_at: new Date().toISOString()
+  };
+
   const { data, error } = await supabase
     .from('settings')
-    .upsert({
-      user_id: user.id, // Key match for uniqueness logic or RLS
-      statuses: settings.statuses,
-      company_name: settings.companyName,
-      company_description: settings.companyDescription,
-      about_me: settings.aboutMe,
-      sheet_url: settings.sheetUrl,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'user_id' }) // Ensure one row per user
+    .upsert(payload, { onConflict: 'user_id' })
     .select()
     .single();
 
   if (error) {
-    console.error('Error saving settings:', error);
+    console.error('Error saving settings:', error.message, error.details, error.hint);
     throw error;
   }
 

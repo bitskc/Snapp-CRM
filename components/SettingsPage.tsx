@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { Save, Sparkles, Plus, Trash2, Database, Loader2, Edit2, GripVertical, Check } from 'lucide-react';
+import { Save, Sparkles, Plus, Trash2, Database, Loader2, Edit2, GripVertical, Check, Zap } from 'lucide-react';
 import {
     DndContext,
     closestCenter,
@@ -85,6 +85,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
         setIsSaving(true);
         try {
             await updateSettings(localSettings);
+            // Brief artificial delay to ensure the user sees the "saving" state
+            await new Promise(resolve => setTimeout(resolve, 800));
         } finally {
             setIsSaving(false);
         }
@@ -252,6 +254,46 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                             </div>
                         </div>
 
+                        {/* Daily Sales Plan / Autopilot */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+                                <Zap size={18} className="text-yellow-400" /> Daily Sales Plan
+                            </h3>
+                            <p className="text-sm text-slate-400 mb-4">
+                                Choose which pipeline statuses are included when generating your daily action queue.
+                            </p>
+                            <div className="flex flex-wrap gap-3">
+                                {(() => {
+                                    const autopilotStatuses = localSettings.autopilotStatuses
+                                        ?? localSettings.statuses.slice(0, -1).map(s => s.id);
+                                    return localSettings.statuses.map(status => {
+                                    const isChecked = autopilotStatuses.includes(status.id);
+                                    return (
+                                        <label
+                                            key={status.id}
+                                            className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-750 transition-colors"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={() => {
+                                                    const current = autopilotStatuses;
+                                                    const next = isChecked
+                                                        ? current.filter(id => id !== status.id)
+                                                        : [...current, status.id];
+                                                    setLocalSettings(prev => ({ ...prev, autopilotStatuses: next }));
+                                                }}
+                                                className="accent-brand-500"
+                                            />
+                                            <div className={`w-3 h-3 rounded-full ${getStatusColorClass(status.color)}`}></div>
+                                            <span className="text-sm text-slate-200">{status.label}</span>
+                                        </label>
+                                    );
+                                    });
+                                })()}
+                            </div>
+                        </div>
+
                         <div className="flex justify-end sticky bottom-0 bg-slate-950 p-4 border-t border-slate-800">
                             <button
                                 onClick={handleSaveSettings}
@@ -311,9 +353,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                                     <button
                                         onClick={handleAddStatus}
                                         disabled={!newStatusLabel}
-                                        className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium ml-auto"
+                                        className="bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-medium ml-auto transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        Add
+                                        Add Status
                                     </button>
                                 </div>
                             </div>

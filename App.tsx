@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { fetchLeads, saveLead, fetchSettings, fetchProducts } from './services/crmService';
@@ -13,6 +13,8 @@ import { ToastContainer } from './components/ToastContainer';
 import { DashboardPage } from './pages/Dashboard';
 import { FinderPage } from './pages/Finder';
 import { SettingsPageRoute } from './pages/Settings';
+import { GrowthLab } from './pages/GrowthLab';
+import { AutopilotPage } from './pages/Autopilot';
 
 const AppContent = () => {
   const { user, loading } = useAuth();
@@ -36,6 +38,8 @@ const AppContent = () => {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/finder" element={<FinderPage />} />
+            <Route path="/growth-lab" element={<GrowthLab />} />
+            <Route path="/autopilot" element={<AutopilotPage />} />
             <Route path="/settings" element={<SettingsPageRoute />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

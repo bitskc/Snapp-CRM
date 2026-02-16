@@ -29,6 +29,7 @@ export interface AppSettings {
   aboutMe: string; // User persona/style
   sheetUrl?: string;
   statuses: StatusConfig[];
+  autopilotStatuses?: string[];
 }
 
 export interface LeadAIAnalysis {
@@ -69,5 +70,65 @@ export interface ChatMessage {
   foundLeads?: Lead[]; // If the model returned leads in this turn
 }
 
+export interface AutopilotAction {
+  id: string;
+  leadId: string;
+  leadName: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  actionType: 'email' | 'call' | 'social' | 'note';
+  priority: number;
+  reasoning: string;
+  content?: string;
+  status: 'pending' | 'completed' | 'skipped';
+}
+
+export interface AutopilotQueue {
+  generatedAt: string;
+  actions: AutopilotAction[];
+}
+
 // Google Sheets row representation (mock)
 export type SheetRow = (string | number | boolean)[];
+
+// --- Growth Lab ---
+
+export type GrowthConceptStatus = 'RAW' | 'IGNITED' | 'ARCHIVED';
+export type GrowthPostStatus = 'DRAFT' | 'POSTED';
+export type EngagementOpportunityStatus = 'NEW' | 'DONE';
+
+export interface GrowthSettings {
+  user_id: string;
+  current_campaign_theme?: string;
+  theme_goal?: string;
+  updated_at: string;
+}
+
+export interface GrowthConcept {
+  id: string;
+  user_id: string;
+  topic: string;
+  theme_snapshot?: string;
+  status: GrowthConceptStatus;
+  created_at: string;
+}
+
+export interface GrowthPost {
+  id: string;
+  concept_id: string;
+  platform: 'LINKEDIN' | 'X';
+  content: string;
+  status: GrowthPostStatus;
+  created_at: string;
+}
+
+export interface EngagementOpportunity {
+  id: string;
+  user_id: string;
+  query_url: string;
+  theme_focus?: string;
+  suggested_reply?: string;
+  status: EngagementOpportunityStatus;
+  created_at: string;
+}

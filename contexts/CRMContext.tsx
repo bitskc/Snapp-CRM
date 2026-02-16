@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Lead, AppSettings, Product, LeadStatus, ChatMessage } from '../types';
-import { fetchLeads, saveLead, fetchSettings, saveSettings, fetchProducts, saveProduct as apiSaveProduct, deleteProduct as apiDeleteProduct } from '../services/crmService';
+import { fetchLeads, saveLead, deleteLead as apiDeleteLead, fetchSettings, saveSettings, fetchProducts, saveProduct as apiSaveProduct, deleteProduct as apiDeleteProduct } from '../services/crmService';
 import { useAuth } from './AuthContext';
 
 export interface Toast {
@@ -29,6 +29,7 @@ interface CRMContextType {
     loadMore: () => Promise<void>;
     updateLead: (lead: Lead) => Promise<void>;
     updateLeadStatus: (leadId: string, status: LeadStatus) => Promise<void>;
+    deleteLead: (leadId: string) => Promise<void>;
     updateSettings: (settings: AppSettings) => Promise<void>;
     saveProduct: (product: Product) => Promise<void>;
     deleteProduct: (productId: string) => Promise<void>;
@@ -109,10 +110,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const updateLead = async (updatedLead: Lead) => {
         const originalLeads = [...leads];
+        // Optimistically update local state
         setLeads(prev => prev.map(l => l.id === updatedLead.id ? updatedLead : l));
 
         try {
-            await saveLead(updatedLead);
+            const saved = await saveLead(updatedLead);
+            // Update with the version from server (which might have new coords)
+            setLeads(prev => prev.map(l => l.id === saved.id ? saved : l));
             addToast(`${updatedLead.companyName} updated successfully`, "success");
         } catch (e) {
             setLeads(originalLeads);
@@ -133,6 +137,21 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } catch (e) {
             setLeads(prev => prev.map(l => l.id === leadId ? lead : l));
             addToast("Failed to update status", "error");
+        }
+    };
+
+    const handleDeleteLead = async (leadId: string) => {
+        const originalLeads = [...leads];
+        setLeads(prev => prev.filter(l => l.id !== leadId));
+        setTotalLeads(prev => prev - 1);
+
+        try {
+            await apiDeleteLead(leadId);
+            addToast("Lead deleted", "info");
+        } catch (e) {
+            setLeads(originalLeads);
+            setTotalLeads(prev => prev + 1);
+            addToast("Failed to delete lead", "error");
         }
     };
 
@@ -202,6 +221,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             loadMore,
             updateLead,
             updateLeadStatus,
+            deleteLead: handleDeleteLead,
             updateSettings,
             saveProduct: handleSaveProduct,
             deleteProduct: handleDeleteProduct,
