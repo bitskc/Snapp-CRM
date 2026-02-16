@@ -195,7 +195,9 @@ return leads.map(l => ({
 
 **Initialization**:
 ```typescript
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Frontend calls Supabase Edge Function (ai-gateway).
+// Gemini API key is stored server-side as an edge function secret.
+const { data } = await supabase.functions.invoke('ai-gateway', { body: { action, payload } });
 ```
 
 **AI Functions**:
@@ -355,7 +357,9 @@ interface StatusConfig {
 ### Development
 ```bash
 npm install
-# Create .env.local with GEMINI_API_KEY
+# Create .env.local with:
+# VITE_SUPABASE_URL
+# VITE_SUPABASE_ANON_KEY
 npm run dev  # http://localhost:3000
 ```
 
@@ -368,7 +372,8 @@ npm run preview  # Test production build
 ### Deployment Targets
 - **Static hosting**: Netlify, Vercel, GitHub Pages
 - **Requirements**: Serve `index.html` for all routes (SPA)
-- **Environment**: Set `GEMINI_API_KEY` via build-time env vars
+- **Environment**: Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for frontend.
+- **AI Secret**: Set `GEMINI_API_KEY` in Supabase Edge Function secrets.
 
 ---
 

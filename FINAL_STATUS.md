@@ -1,5 +1,8 @@
 # Snapp-CRM: Final Status Report
 
+> Note: This is a legacy milestone report from an earlier phase.
+> For the current release snapshot and go/no-go checklist, see `RELEASE_READINESS.md`.
+
 ## 🎉 All Issues Fixed!
 
 This document provides a complete summary of all improvements made to the Snapp-CRM application.
