@@ -28,12 +28,11 @@ npm run preview      # Preview production build locally
 
 Required in `.env.local`:
 ```
-GEMINI_API_KEY=<Google Gemini API key>
 VITE_SUPABASE_URL=<Supabase project URL>
 VITE_SUPABASE_ANON_KEY=<Supabase anonymous key>
 ```
 
-Vite injects `GEMINI_API_KEY` as both `process.env.API_KEY` and `process.env.GEMINI_API_KEY` (see `vite.config.ts`).
+`GEMINI_API_KEY` should be stored as a Supabase Edge Function secret, not in browser env vars.
 
 ## Project Structure
 
@@ -43,7 +42,7 @@ Vite injects `GEMINI_API_KEY` as both `process.env.API_KEY` and `process.env.GEM
 ├── index.tsx                # React DOM entry point
 ├── types.ts                 # All TypeScript interfaces (Lead, Note, Product, etc.)
 ├── index.html               # HTML template (loads Tailwind, Leaflet, Google Fonts via CDN)
-├── vite.config.ts           # Vite config (port 3000, path alias @/, env injection)
+├── vite.config.ts           # Vite config (port 3000, path alias @/)
 ├── tsconfig.json            # TypeScript config (ES2022, react-jsx, @/* path alias)
 │
 ├── components/              # React UI components

@@ -40,4 +40,5 @@ Ensure your `.env.local` has the correct Supabase URLs:
 2.  **Frontend Service (`services/geminiService.ts`)**: Refactored to use `supabase.functions.invoke()`. The heavy Google SDK is no longer needed on the client, reducing bundle size and improving security.
 3.  **Security Compliance**: Closed the P0 vulnerability where your API key was visible in the browser.
 
-**Note:** You can now delete the `VITE_GEMINI_API_KEY` from your `.env.local` file after the deployment is verified.
+**Note:** The frontend should only use `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local`.  
+`GEMINI_API_KEY` should be stored as a Supabase Edge Function secret, not a browser env var.

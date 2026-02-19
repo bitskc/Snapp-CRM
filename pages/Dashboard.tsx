@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Filter, RefreshCw, List, Kanban, CalendarClock, ChevronDown, Map as MapIcon, Upload } from 'lucide-react';
+import { Search, Filter, RefreshCw, List, Kanban, CalendarClock, ChevronDown, Map as MapIcon, Upload, X } from 'lucide-react';
 import { useDebounce } from '../hooks/useDebounce';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { KanbanBoard } from '../components/KanbanBoard';
 import { ListView } from '../components/ListView';
 import { MapView } from '../components/MapView';
 import { LeadModal } from '../components/LeadModal';
+import { LeadSidebar } from '../components/LeadSidebar';
 import { ImportModal } from '../components/ImportModal';
 import { Lead, AppSettings, Product, LeadStatus } from '../types';
 
@@ -22,7 +23,8 @@ export const DashboardPage: React.FC = () => {
         loadMore,
         hasMore,
         updateLead,
-        updateLeadStatus
+        updateLeadStatus,
+        deleteLead
     } = useCRM();
 
     // Local state scoped to this page
@@ -32,16 +34,57 @@ export const DashboardPage: React.FC = () => {
     const debouncedSearch = useDebounce(searchFilter, 300);
     const [needsContactFilter, setNeedsContactFilter] = useState(false);
     const [sourceFilter, setSourceFilter] = useState<'ALL' | 'MANUAL' | 'AI'>('ALL');
+    const [statusFilter, setStatusFilter] = useState<string[]>([]);
+    const [productFilter, setProductFilter] = useState<string[]>([]);
+    const [locationFilter, setLocationFilter] = useState('');
     const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
     const filterMenuRef = React.useRef<HTMLDivElement>(null);
     useClickOutside(filterMenuRef, () => setIsFilterMenuOpen(false));
 
+    const activeFilterCount = useMemo(() => {
+        let count = 0;
+        if (sourceFilter !== 'ALL') count++;
+        if (statusFilter.length > 0) count++;
+        if (productFilter.length > 0) count++;
+        if (locationFilter) count++;
+        return count;
+    }, [sourceFilter, statusFilter, productFilter, locationFilter]);
+
+    const clearAllFilters = () => {
+        setSourceFilter('ALL');
+        setStatusFilter([]);
+        setProductFilter([]);
+        setLocationFilter('');
+    };
+
+    // Build unique locations from leads for the location filter
+    const uniqueLocations = useMemo(() => {
+        const locs = new Set<string>();
+        leads.forEach(l => {
+            if (l.location) {
+                // Extract state/city-level grouping from location string
+                const parts = l.location.split(',').map(p => p.trim());
+                if (parts.length >= 2) {
+                    // Use last two parts (usually city, state or state, country)
+                    locs.add(parts.slice(-2).join(', '));
+                }
+                locs.add(l.location);
+            }
+        });
+        return Array.from(locs).sort();
+    }, [leads]);
+
     const filteredLeads = useMemo(() => {
+        const searchLower = debouncedSearch.toLowerCase();
         return leads.filter(l => {
-            const matchesSearch = l.companyName.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-                l.description?.toLowerCase().includes(debouncedSearch.toLowerCase());
+            const matchesSearch = !searchLower ||
+                l.companyName.toLowerCase().includes(searchLower) ||
+                l.description?.toLowerCase().includes(searchLower) ||
+                l.contactName?.toLowerCase().includes(searchLower) ||
+                l.email?.toLowerCase().includes(searchLower) ||
+                l.location?.toLowerCase().includes(searchLower);
 
             let matchesNeedsContact = true;
             if (needsContactFilter) {
@@ -54,9 +97,17 @@ export const DashboardPage: React.FC = () => {
             if (sourceFilter === 'MANUAL') matchesSource = l.source === 'MANUAL';
             if (sourceFilter === 'AI') matchesSource = l.source === 'AI_FINDER';
 
-            return matchesSearch && matchesNeedsContact && matchesSource;
+            const matchesStatus = statusFilter.length === 0 || statusFilter.includes(l.status);
+
+            const matchesProduct = productFilter.length === 0 ||
+                productFilter.some(pid => (l.productIds || []).includes(pid));
+
+            const matchesLocation = !locationFilter ||
+                (l.location && l.location.toLowerCase().includes(locationFilter.toLowerCase()));
+
+            return matchesSearch && matchesNeedsContact && matchesSource && matchesStatus && matchesProduct && matchesLocation;
         });
-    }, [leads, debouncedSearch, needsContactFilter, sourceFilter]);
+    }, [leads, debouncedSearch, needsContactFilter, sourceFilter, statusFilter, productFilter, locationFilter]);
 
     const handleNextLead = () => {
         if (!selectedLead) return;
@@ -128,32 +179,99 @@ export const DashboardPage: React.FC = () => {
                         <button
                             onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
                             className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-all whitespace-nowrap
-                    ${sourceFilter !== 'ALL'
+                    ${activeFilterCount > 0
                                     ? 'bg-brand-900/30 text-brand-400 border-brand-800'
                                     : 'text-slate-400 hover:bg-slate-900 border-transparent hover:border-slate-800'}
                     `}
                         >
-                            <Filter size={16} /> Filter <ChevronDown size={14} />
+                            <Filter size={16} /> Filter {activeFilterCount > 0 && <span className="bg-brand-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeFilterCount}</span>} <ChevronDown size={14} />
                         </button>
 
                         {isFilterMenuOpen && (
-                            <div className="absolute top-full right-0 mt-2 w-48 bg-slate-900 border border-slate-800 rounded-lg shadow-xl py-1 z-[60]">
-                                <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase">Source</div>
+                            <div className="absolute top-full right-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-lg shadow-xl py-1 z-[60] max-h-[70vh] overflow-y-auto custom-scrollbar">
+                                {activeFilterCount > 0 && (
+                                    <button
+                                        onClick={clearAllFilters}
+                                        className="w-full text-left px-4 py-2 text-xs text-red-400 hover:bg-slate-800 flex items-center gap-1.5"
+                                    >
+                                        <X size={12} /> Clear all filters
+                                    </button>
+                                )}
+
+                                {/* Status Filter */}
+                                <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase border-t border-slate-800">Status</div>
+                                {settings?.statuses.map(s => (
+                                    <label key={s.id} className="flex items-center gap-2 px-4 py-1.5 hover:bg-slate-800 cursor-pointer text-sm text-slate-300">
+                                        <input
+                                            type="checkbox"
+                                            checked={statusFilter.includes(s.id)}
+                                            onChange={() => setStatusFilter(prev =>
+                                                prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]
+                                            )}
+                                            className="accent-brand-500"
+                                        />
+                                        {s.label}
+                                    </label>
+                                ))}
+
+                                {/* Product Filter */}
+                                {products.length > 0 && (
+                                    <>
+                                        <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase border-t border-slate-800">Product</div>
+                                        {products.map(p => (
+                                            <label key={p.id} className="flex items-center gap-2 px-4 py-1.5 hover:bg-slate-800 cursor-pointer text-sm text-slate-300">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={productFilter.includes(p.id)}
+                                                    onChange={() => setProductFilter(prev =>
+                                                        prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]
+                                                    )}
+                                                    className="accent-brand-500"
+                                                />
+                                                <span className="truncate">{p.name}</span>
+                                            </label>
+                                        ))}
+                                    </>
+                                )}
+
+                                {/* Location Filter */}
+                                <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase border-t border-slate-800">Location</div>
+                                <div className="px-3 pb-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Type to filter..."
+                                        value={locationFilter}
+                                        onChange={(e) => setLocationFilter(e.target.value)}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-sm text-slate-200 outline-none focus:border-brand-500 placeholder-slate-600"
+                                    />
+                                </div>
+                                {locationFilter === '' && uniqueLocations.slice(0, 8).map(loc => (
+                                    <button
+                                        key={loc}
+                                        onClick={() => setLocationFilter(loc)}
+                                        className="w-full text-left px-4 py-1.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200 truncate"
+                                    >
+                                        {loc}
+                                    </button>
+                                ))}
+
+                                {/* Source Filter */}
+                                <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase border-t border-slate-800">Source</div>
                                 <button
-                                    onClick={() => { setSourceFilter('ALL'); setIsFilterMenuOpen(false); }}
-                                    className={`w-full text-left px-4 py-2 text-sm ${sourceFilter === 'ALL' ? 'text-brand-400 bg-slate-800' : 'text-slate-300 hover:bg-slate-800'}`}
+                                    onClick={() => setSourceFilter('ALL')}
+                                    className={`w-full text-left px-4 py-1.5 text-sm ${sourceFilter === 'ALL' ? 'text-brand-400 bg-slate-800' : 'text-slate-300 hover:bg-slate-800'}`}
                                 >
                                     All Sources
                                 </button>
                                 <button
-                                    onClick={() => { setSourceFilter('MANUAL'); setIsFilterMenuOpen(false); }}
-                                    className={`w-full text-left px-4 py-2 text-sm ${sourceFilter === 'MANUAL' ? 'text-brand-400 bg-slate-800' : 'text-slate-300 hover:bg-slate-800'}`}
+                                    onClick={() => setSourceFilter('MANUAL')}
+                                    className={`w-full text-left px-4 py-1.5 text-sm ${sourceFilter === 'MANUAL' ? 'text-brand-400 bg-slate-800' : 'text-slate-300 hover:bg-slate-800'}`}
                                 >
                                     Manual Entry
                                 </button>
                                 <button
-                                    onClick={() => { setSourceFilter('AI'); setIsFilterMenuOpen(false); }}
-                                    className={`w-full text-left px-4 py-2 text-sm ${sourceFilter === 'AI' ? 'text-brand-400 bg-slate-800' : 'text-slate-300 hover:bg-slate-800'}`}
+                                    onClick={() => setSourceFilter('AI')}
+                                    className={`w-full text-left px-4 py-1.5 text-sm ${sourceFilter === 'AI' ? 'text-brand-400 bg-slate-800' : 'text-slate-300 hover:bg-slate-800'}`}
                                 >
                                     AI Finder
                                 </button>
@@ -212,14 +330,33 @@ export const DashboardPage: React.FC = () => {
                     />
                 )}
                 {viewMode === 'list' && (
-                    <ListView leads={filteredLeads} onRowClick={setSelectedLead} settings={settings!} />
+                    <div className="flex h-full gap-0">
+                        <div className={`${selectedLead ? 'flex-1 min-w-0' : 'w-full'} transition-all`}>
+                            <ListView
+                                leads={filteredLeads}
+                                onRowClick={setSelectedLead}
+                                settings={settings!}
+                                onDeleteLeads={(ids) => ids.forEach(id => deleteLead(id))}
+                                onUpdateLeadStatuses={(ids, status) => ids.forEach(id => updateLeadStatus(id, status))}
+                                activeLead={selectedLead}
+                            />
+                        </div>
+                        {selectedLead && settings && (
+                            <div className="w-[420px] flex-shrink-0 border-l border-slate-800 overflow-y-auto custom-scrollbar bg-slate-900">
+                                <LeadSidebar
+                                    lead={selectedLead}
+                                    onClose={() => setSelectedLead(null)}
+                                />
+                            </div>
+                        )}
+                    </div>
                 )}
                 {viewMode === 'map' && (
                     <MapView leads={filteredLeads} onLeadClick={setSelectedLead} />
                 )}
             </div>
 
-            {selectedLead && settings && (
+            {selectedLead && settings && viewMode !== 'list' && (
                 <LeadModal
                     lead={selectedLead}
                     isOpen={!!selectedLead}
