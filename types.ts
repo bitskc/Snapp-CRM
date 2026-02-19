@@ -99,36 +99,36 @@ export type GrowthPostStatus = 'DRAFT' | 'POSTED';
 export type EngagementOpportunityStatus = 'NEW' | 'DONE';
 
 export interface GrowthSettings {
-  user_id: string;
-  current_campaign_theme?: string;
-  theme_goal?: string;
-  updated_at: string;
+  userId: string;
+  currentCampaignTheme?: string;
+  themeGoal?: string;
+  updatedAt: string;
 }
 
 export interface GrowthConcept {
   id: string;
-  user_id: string;
+  userId: string;
   topic: string;
-  theme_snapshot?: string;
+  themeSnapshot?: string;
   status: GrowthConceptStatus;
-  created_at: string;
+  createdAt: string;
 }
 
 export interface GrowthPost {
   id: string;
-  concept_id: string;
+  conceptId: string;
   platform: 'LINKEDIN' | 'X';
   content: string;
   status: GrowthPostStatus;
-  created_at: string;
+  createdAt: string;
 }
 
 export interface EngagementOpportunity {
   id: string;
-  user_id: string;
-  query_url: string;
-  theme_focus?: string;
-  suggested_reply?: string;
+  userId: string;
+  queryUrl: string;
+  themeFocus?: string;
+  suggestedReply?: string;
   status: EngagementOpportunityStatus;
-  created_at: string;
+  createdAt: string;
 }

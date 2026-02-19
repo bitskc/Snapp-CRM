@@ -271,7 +271,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                                     return (
                                         <label
                                             key={status.id}
-                                            className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-750 transition-colors"
+                                            className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-700 transition-colors"
                                         >
                                             <input
                                                 type="checkbox"

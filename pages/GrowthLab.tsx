@@ -89,7 +89,7 @@ export const GrowthLab: FC = () => {
 
     const handlePickTheme = async (theme: string, goal: string) => {
         try {
-            const newSettings = { current_campaign_theme: theme, theme_goal: goal };
+            const newSettings = { currentCampaignTheme: theme, themeGoal: goal };
             await saveGrowthSettings(newSettings);
 
             const freshSettings = await fetchGrowthSettings();
@@ -117,14 +117,14 @@ export const GrowthLab: FC = () => {
     };
 
     const handleGenerateSparks = async () => {
-        if (!growthSettings?.current_campaign_theme || !settings) return;
+        if (!growthSettings?.currentCampaignTheme || !settings) return;
         setIsGeneratingSparks(true);
         try {
-            const sparks = await generateDailySparks(growthSettings.current_campaign_theme, settings);
+            const sparks = await generateDailySparks(growthSettings.currentCampaignTheme, settings);
             const newConcepts = await Promise.all(sparks.map(spark =>
                 saveGrowthConcept({
                     topic: spark,
-                    theme_snapshot: growthSettings.current_campaign_theme,
+                    themeSnapshot: growthSettings.currentCampaignTheme,
                     status: 'RAW'
                 })
             ));
@@ -146,17 +146,17 @@ export const GrowthLab: FC = () => {
     };
 
     const handleExpandPost = async (platform: 'LINKEDIN' | 'X') => {
-        if (!selectedConcept || !growthSettings?.current_campaign_theme || !settings) return;
+        if (!selectedConcept || !growthSettings?.currentCampaignTheme || !settings) return;
         setIsExpanding(true);
         try {
             const content = await expandConceptToPost(
                 selectedConcept.topic,
                 platform,
-                growthSettings.current_campaign_theme,
+                growthSettings.currentCampaignTheme,
                 settings
             );
             const newPost = await saveGrowthPost({
-                concept_id: selectedConcept.id,
+                conceptId: selectedConcept.id,
                 platform,
                 content,
                 status: 'DRAFT'
@@ -172,8 +172,8 @@ export const GrowthLab: FC = () => {
     };
 
     const handleGeneratePulse = async () => {
-        if (!growthSettings?.current_campaign_theme) return;
-        const theme = growthSettings.current_campaign_theme;
+        if (!growthSettings?.currentCampaignTheme) return;
+        const theme = growthSettings.currentCampaignTheme;
         setIsGeneratingPulse(true);
         try {
             const queries = await generateOutreachQueries(theme);
@@ -184,9 +184,9 @@ export const GrowthLab: FC = () => {
 
             const newOpps = await Promise.all(
                 queries.map((q, i) => saveEngagementOpportunity({
-                    query_url: q.url,
-                    theme_focus: theme,
-                    suggested_reply: replyResults[i].join('\n---\n'),
+                    queryUrl: q.url,
+                    themeFocus: theme,
+                    suggestedReply: replyResults[i].join('\n---\n'),
                     status: 'NEW'
                 }))
             );
@@ -307,7 +307,7 @@ export const GrowthLab: FC = () => {
                         <div>
                             <p className="text-xs text-brand-400 uppercase font-bold tracking-widest">Weekly Strategic Theme</p>
                             <h2 className="text-lg font-bold text-white">
-                                {growthSettings?.current_campaign_theme || 'No theme selected'}
+                                {growthSettings?.currentCampaignTheme || 'No theme selected'}
                             </h2>
                         </div>
                     </div>
@@ -317,7 +317,7 @@ export const GrowthLab: FC = () => {
                         className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm transition-all border border-slate-700 disabled:opacity-50"
                     >
                         {isGeneratingTheme ? <Loader2 className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
-                        {growthSettings?.current_campaign_theme ? 'Pivot Theme' : 'Get Themes'}
+                        {growthSettings?.currentCampaignTheme ? 'Pivot Theme' : 'Get Themes'}
                     </button>
                 </div>
             </header>
@@ -352,7 +352,7 @@ export const GrowthLab: FC = () => {
                             </h3>
                             <button
                                 onClick={handleGenerateSparks}
-                                disabled={isGeneratingSparks || !growthSettings?.current_campaign_theme}
+                                disabled={isGeneratingSparks || !growthSettings?.currentCampaignTheme}
                                 className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold flex items-center gap-2 transition-all disabled:opacity-50"
                             >
                                 {isGeneratingSparks ? <Loader2 className="animate-spin w-4 h-4" /> : <Plus className="w-4 h-4" />}
@@ -458,13 +458,13 @@ export const GrowthLab: FC = () => {
                                 <div className="space-y-4">
                                     <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Toolkit Assets</h4>
                                     <div className="space-y-4">
-                                        {posts.filter(p => p.concept_id === selectedConcept?.id).length === 0 ? (
+                                        {posts.filter(p => p.conceptId === selectedConcept?.id).length === 0 ? (
                                             <div className="h-64 flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-2xl">
                                                 <Activity className="w-8 h-8 mb-2 opacity-20" />
                                                 <p className="text-sm italic">Nothing forged yet for this concept.</p>
                                             </div>
                                         ) : (
-                                            posts.filter(p => p.concept_id === selectedConcept?.id).map(post => (
+                                            posts.filter(p => p.conceptId === selectedConcept?.id).map(post => (
                                                 <div key={post.id} className="p-4 rounded-xl bg-slate-800 border border-slate-700 space-y-3">
                                                     <div className="flex justify-between items-center">
                                                         <div className="flex items-center gap-2">
@@ -565,7 +565,7 @@ export const GrowthLab: FC = () => {
                             </div>
                             <button
                                 onClick={handleGeneratePulse}
-                                disabled={isGeneratingPulse || !growthSettings?.current_campaign_theme}
+                                disabled={isGeneratingPulse || !growthSettings?.currentCampaignTheme}
                                 className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-bold flex items-center gap-2 transition-all disabled:opacity-50"
                             >
                                 {isGeneratingPulse ? <Loader2 className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
@@ -586,10 +586,10 @@ export const GrowthLab: FC = () => {
                                             <div className="flex-1 space-y-4">
                                                 <div className="flex items-center justify-between">
                                                     <h4 className="text-white font-bold flex items-center gap-2">
-                                                        {opp.theme_focus} <span className="text-xs text-slate-500 font-normal">at Pulse</span>
+                                                        {opp.themeFocus} <span className="text-xs text-slate-500 font-normal">at Pulse</span>
                                                     </h4>
                                                     <a
-                                                        href={opp.query_url}
+                                                        href={opp.queryUrl}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="text-brand-400 hover:text-brand-300 text-xs font-bold flex items-center gap-1"
@@ -601,10 +601,10 @@ export const GrowthLab: FC = () => {
                                                 <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
                                                     <p className="text-[10px] text-slate-500 uppercase font-bold mb-2 tracking-widest">Suggested Reply</p>
                                                     <p className="text-sm text-slate-300 leading-relaxed italic">
-                                                        {opp.suggested_reply?.split('\n---\n')[0]}
+                                                        {opp.suggestedReply?.split('\n---\n')[0]}
                                                     </p>
                                                     <button
-                                                        onClick={() => opp.suggested_reply && navigator.clipboard.writeText(opp.suggested_reply.split('\n---\n')[0])}
+                                                        onClick={() => opp.suggestedReply && navigator.clipboard.writeText(opp.suggestedReply.split('\n---\n')[0])}
                                                         className="mt-3 text-xs text-brand-400 hover:text-brand-300 font-bold flex items-center gap-1"
                                                     >
                                                         <Copy className="w-3 h-3" /> Copy Template

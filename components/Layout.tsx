@@ -36,10 +36,14 @@ export const Layout: FC<LayoutProps> = ({ children }) => {
       } catch { setAutopilotBadge(0); }
     };
     readBadge();
-    // Re-read on storage events (cross-tab + same-tab updates)
+    // Re-read on storage events (cross-tab sync)
     window.addEventListener('storage', readBadge);
-    const interval = setInterval(readBadge, 3000); // poll for same-tab updates
-    return () => { window.removeEventListener('storage', readBadge); clearInterval(interval); };
+    // Subscribe to same-tab queue updates via custom event
+    window.addEventListener('autopilot-queue-updated', readBadge);
+    return () => {
+      window.removeEventListener('storage', readBadge);
+      window.removeEventListener('autopilot-queue-updated', readBadge);
+    };
   }, []);
 
   return (

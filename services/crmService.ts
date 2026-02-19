@@ -27,7 +27,7 @@ const geocodeLocation = (location: string): Promise<{ lat: number, lon: number }
   if (geocodeCache[location]) return Promise.resolve(geocodeCache[location]);
 
   const result = new Promise<{ lat: number, lon: number } | null>((resolve) => {
-    geocodeChain = geocodeChain.then(async () => {
+    geocodeChain = geocodeChain.catch(() => {}).then(async () => {
       // Check cache again in case a queued request already resolved this location
       if (geocodeCache[location]) {
         resolve(geocodeCache[location]);
@@ -202,6 +202,42 @@ export const deleteLead = async (leadId: string): Promise<void> => {
 
 // --- Growth Lab ---
 
+// Mapping helpers: DB snake_case ↔ TS camelCase
+const mapGrowthSettings = (data: any): GrowthSettings => ({
+  userId: data.user_id,
+  currentCampaignTheme: data.current_campaign_theme,
+  themeGoal: data.theme_goal,
+  updatedAt: data.updated_at,
+});
+
+const mapGrowthConcept = (data: any): GrowthConcept => ({
+  id: data.id,
+  userId: data.user_id,
+  topic: data.topic,
+  themeSnapshot: data.theme_snapshot,
+  status: data.status,
+  createdAt: data.created_at,
+});
+
+const mapGrowthPost = (data: any): GrowthPost => ({
+  id: data.id,
+  conceptId: data.concept_id,
+  platform: data.platform,
+  content: data.content,
+  status: data.status,
+  createdAt: data.created_at,
+});
+
+const mapEngagementOpportunity = (data: any): EngagementOpportunity => ({
+  id: data.id,
+  userId: data.user_id,
+  queryUrl: data.query_url,
+  themeFocus: data.theme_focus,
+  suggestedReply: data.suggested_reply,
+  status: data.status,
+  createdAt: data.created_at,
+});
+
 export const fetchGrowthSettings = async (): Promise<GrowthSettings | null> => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -213,7 +249,7 @@ export const fetchGrowthSettings = async (): Promise<GrowthSettings | null> => {
     .maybeSingle();
 
   if (error || !data) return null;
-  return data;
+  return mapGrowthSettings(data);
 };
 
 export const saveGrowthSettings = async (settings: Partial<GrowthSettings>): Promise<void> => {
@@ -224,7 +260,8 @@ export const saveGrowthSettings = async (settings: Partial<GrowthSettings>): Pro
     .from('growth_settings')
     .upsert({
       user_id: user.id,
-      ...settings,
+      current_campaign_theme: settings.currentCampaignTheme,
+      theme_goal: settings.themeGoal,
       updated_at: new Date().toISOString()
     }, { onConflict: 'user_id' });
 
@@ -247,7 +284,7 @@ export const fetchGrowthConcepts = async (status?: string): Promise<GrowthConcep
 
   const { data, error } = await query;
   if (error) return [];
-  return data || [];
+  return (data || []).map(mapGrowthConcept);
 };
 
 export const saveGrowthConcept = async (concept: Partial<GrowthConcept>): Promise<GrowthConcept> => {
@@ -260,15 +297,15 @@ export const saveGrowthConcept = async (concept: Partial<GrowthConcept>): Promis
       id: concept.id,
       user_id: user.id,
       topic: concept.topic,
-      theme_snapshot: concept.theme_snapshot,
+      theme_snapshot: concept.themeSnapshot,
       status: concept.status || 'RAW',
-      created_at: concept.created_at || new Date().toISOString()
+      created_at: concept.createdAt || new Date().toISOString()
     })
     .select()
     .single();
 
   if (error) throw error;
-  return data;
+  return mapGrowthConcept(data);
 };
 
 export const fetchGrowthPosts = async (conceptId: string): Promise<GrowthPost[]> => {
@@ -278,7 +315,7 @@ export const fetchGrowthPosts = async (conceptId: string): Promise<GrowthPost[]>
     .eq('concept_id', conceptId);
 
   if (error) return [];
-  return data || [];
+  return (data || []).map(mapGrowthPost);
 };
 
 export const saveGrowthPost = async (post: Partial<GrowthPost>): Promise<GrowthPost> => {
@@ -286,17 +323,17 @@ export const saveGrowthPost = async (post: Partial<GrowthPost>): Promise<GrowthP
     .from('growth_posts')
     .upsert({
       id: post.id,
-      concept_id: post.concept_id,
+      concept_id: post.conceptId,
       platform: post.platform,
       content: post.content,
       status: post.status || 'DRAFT',
-      created_at: post.created_at || new Date().toISOString()
+      created_at: post.createdAt || new Date().toISOString()
     })
     .select()
     .single();
 
   if (error) throw error;
-  return data;
+  return mapGrowthPost(data);
 };
 
 export const deleteGrowthPost = async (postId: string): Promise<void> => {
@@ -322,7 +359,7 @@ export const fetchEngagementOpportunities = async (): Promise<EngagementOpportun
     .order('created_at', { ascending: false });
 
   if (error) return [];
-  return data || [];
+  return (data || []).map(mapEngagementOpportunity);
 };
 
 export const saveEngagementOpportunity = async (opp: Partial<EngagementOpportunity>): Promise<EngagementOpportunity> => {
@@ -334,17 +371,17 @@ export const saveEngagementOpportunity = async (opp: Partial<EngagementOpportuni
     .upsert({
       id: opp.id,
       user_id: user.id,
-      query_url: opp.query_url,
-      theme_focus: opp.theme_focus,
-      suggested_reply: opp.suggested_reply,
+      query_url: opp.queryUrl,
+      theme_focus: opp.themeFocus,
+      suggested_reply: opp.suggestedReply,
       status: opp.status || 'NEW',
-      created_at: opp.created_at || new Date().toISOString()
+      created_at: opp.createdAt || new Date().toISOString()
     })
     .select()
     .single();
 
   if (error) throw error;
-  return data;
+  return mapEngagementOpportunity(data);
 };
 
 export const addNoteToLead = async (leadId: string, content: string): Promise<Note> => {

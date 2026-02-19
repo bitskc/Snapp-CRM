@@ -20,6 +20,7 @@ const loadFromStorage = (): AutopilotQueue | null => {
 
 const saveToStorage = (queue: AutopilotQueue) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
+  window.dispatchEvent(new CustomEvent('autopilot-queue-updated'));
 };
 
 const isQueueValid = (queue: AutopilotQueue): boolean => {
@@ -159,12 +160,13 @@ export function useAutopilotQueue() {
     (actionId: string) => {
       setQueue(prev => {
         if (!prev) return prev;
-        const maxPriority = Math.max(...prev.actions.map(a => a.priority));
+        const idx = prev.actions.findIndex(a => a.id === actionId);
+        if (idx === -1) return prev;
+        const snoozedAction = { ...prev.actions[idx], priority: -1 };
+        const remaining = prev.actions.filter((_, i) => i !== idx);
         return {
           ...prev,
-          actions: prev.actions.map(a =>
-            a.id === actionId ? { ...a, priority: -(maxPriority + 1) } : a
-          ),
+          actions: [...remaining, snoozedAction],
         };
       });
       addToast('Action snoozed', 'info');
@@ -257,6 +259,26 @@ export function useAutopilotQueue() {
     }
     return action;
   });
+
+  // Persist invalidated actions (missing leads marked skipped) back to queue
+  useEffect(() => {
+    if (!queue) return;
+    const skippedIds = new Set(
+      validatedActions
+        .filter(a => a.status === 'skipped' && queue.actions.find(q => q.id === a.id)?.status === 'pending')
+        .map(a => a.id)
+    );
+    if (skippedIds.size === 0) return;
+    setQueue(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        actions: prev.actions.map(a =>
+          skippedIds.has(a.id) ? { ...a, status: 'skipped' as const } : a
+        ),
+      };
+    });
+  }, [validatedActions.length, queue?.actions.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pendingActions = validatedActions.filter(a => a.status === 'pending');
   const pendingCount = pendingActions.length;

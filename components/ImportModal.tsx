@@ -185,13 +185,20 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-800">
-                                        {parsedLeads.map((l, i) => (
+                                        {parsedLeads.slice(0, 50).map((l, i) => (
                                             <tr key={i}>
                                                 <td className="p-3 font-medium text-slate-200">{l.companyName}</td>
                                                 <td className="p-3 truncate max-w-[150px]">{l.location || l.description}</td>
                                                 <td className="p-3">{l.contactName || l.email}</td>
                                             </tr>
                                         ))}
+                                        {parsedLeads.length > 50 && (
+                                            <tr>
+                                                <td colSpan={3} className="p-3 text-center text-slate-500 text-sm">
+                                                    ...and {parsedLeads.length - 50} more
+                                                </td>
+                                            </tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </div>

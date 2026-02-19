@@ -155,9 +155,9 @@ export const AutopilotPage: FC = () => {
                   <button
                     key={action.id}
                     onClick={() =>
-                      isDone || isSkipped ? null : startAction(action.id)
+                      isDone || isSkipped || statusChanged ? null : startAction(action.id)
                     }
-                    disabled={isDone || isSkipped}
+                    disabled={isDone || isSkipped || statusChanged}
                     className={`w-full text-left p-4 rounded-lg border transition-all ${
                       isActive
                         ? 'bg-brand-500/10 border-brand-500/50'

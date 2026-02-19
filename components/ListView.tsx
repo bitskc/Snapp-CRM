@@ -125,7 +125,14 @@ export const ListView: React.FC<ListViewProps> = ({ leads, onRowClick, settings,
     const [sortDir, setSortDir] = useState<SortDir>('asc');
     const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
         const saved = localStorage.getItem('listview-columns');
-        return saved ? JSON.parse(saved) : DEFAULT_COLUMNS;
+        if (!saved) return DEFAULT_COLUMNS;
+        try {
+            const parsed = JSON.parse(saved);
+            return Array.isArray(parsed) ? parsed : DEFAULT_COLUMNS;
+        } catch {
+            console.warn('Failed to parse listview-columns from localStorage, using defaults');
+            return DEFAULT_COLUMNS;
+        }
     });
     const [isColumnPickerOpen, setIsColumnPickerOpen] = useState(false);
     const selectAllRef = useRef<HTMLInputElement>(null);
@@ -145,7 +152,6 @@ export const ListView: React.FC<ListViewProps> = ({ leads, onRowClick, settings,
 
     const gridTemplate = `40px ${activeColumns.map(c => c.width).join(' ')}`;
 
-    const leadsFingerprint = `${leads.length}-${leads[0]?.id}-${leads[leads.length - 1]?.id}`;
     const sortedLeads = useMemo(() => {
         return [...leads].sort((a, b) => {
             let cmp = 0;
@@ -158,8 +164,7 @@ export const ListView: React.FC<ListViewProps> = ({ leads, onRowClick, settings,
             }
             return sortDir === 'asc' ? cmp : -cmp;
         });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [leadsFingerprint, sortField, sortDir]);
+    }, [leads, sortField, sortDir]);
 
     // Keep selectedIds in sync with available leads
     useEffect(() => {
