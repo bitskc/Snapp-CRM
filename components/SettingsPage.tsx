@@ -58,6 +58,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
     const { user } = useAuth();
     const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
     const [isSaving, setIsSaving] = useState(false);
+    const [isDirty, setIsDirty] = useState(false);
     const [activeTab, setActiveTab] = useState<'general' | 'products' | 'statuses'>('general');
 
     const sensors = useSensors(
@@ -67,10 +68,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
         })
     );
 
-    // Sync local state when external settings change
+    // Sync local state when external settings change, but only if user hasn't made unsaved edits
     useEffect(() => {
-        setLocalSettings(settings);
-    }, [settings]);
+        if (!isDirty) {
+            setLocalSettings(settings);
+        }
+    }, [settings, isDirty]);
 
     // Product State
     const [newProduct, setNewProduct] = useState<Partial<Product>>({});
@@ -85,6 +88,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
         setIsSaving(true);
         try {
             await updateSettings(localSettings);
+            setIsDirty(false);
             // Brief artificial delay to ensure the user sees the "saving" state
             await new Promise(resolve => setTimeout(resolve, 800));
         } finally {
@@ -133,6 +137,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
         }
     };
 
+    const updateLocal = (updater: (prev: AppSettings) => AppSettings) => {
+        setLocalSettings(updater);
+        setIsDirty(true);
+    };
+
     const handleAddStatus = () => {
         if (!newStatusLabel) return;
         const newStatus: StatusConfig = {
@@ -141,7 +150,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
             color: newStatusColor,
             order: localSettings.statuses.length
         };
-        setLocalSettings(prev => ({
+        updateLocal(prev => ({
             ...prev,
             statuses: [...prev.statuses, newStatus]
         }));
@@ -149,7 +158,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
     };
 
     const handleDeleteStatus = (id: string) => {
-        setLocalSettings(prev => ({
+        updateLocal(prev => ({
             ...prev,
             statuses: prev.statuses.filter(s => s.id !== id)
         }));
@@ -164,7 +173,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
 
             // Update order property
             const withNewOrder = reordered.map((s, i) => ({ ...s, order: i }));
-            setLocalSettings(prev => ({ ...prev, statuses: withNewOrder }));
+            updateLocal(prev => ({ ...prev, statuses: withNewOrder }));
         }
     };
 
@@ -211,7 +220,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                                     placeholder="Paste Google Sheet URL..."
                                     className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
                                     value={localSettings.sheetUrl || ''}
-                                    onChange={(e) => setLocalSettings(prev => ({ ...prev, sheetUrl: e.target.value }))}
+                                    onChange={(e) => updateLocal(prev => ({ ...prev, sheetUrl: e.target.value }))}
                                 />
                                 <button className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium border border-slate-700">
                                     Test Connection
@@ -230,7 +239,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                                     <input
                                         className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:border-brand-500 outline-none"
                                         value={localSettings.companyName}
-                                        onChange={(e) => setLocalSettings(prev => ({ ...prev, companyName: e.target.value }))}
+                                        onChange={(e) => updateLocal(prev => ({ ...prev, companyName: e.target.value }))}
                                     />
                                 </div>
                                 <div>
@@ -239,7 +248,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                                         className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:border-brand-500 outline-none h-24"
                                         placeholder="What do you do? This helps AI write better scripts."
                                         value={localSettings.companyDescription}
-                                        onChange={(e) => setLocalSettings(prev => ({ ...prev, companyDescription: e.target.value }))}
+                                        onChange={(e) => updateLocal(prev => ({ ...prev, companyDescription: e.target.value }))}
                                     />
                                 </div>
                                 <div>
@@ -248,7 +257,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                                         className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:border-brand-500 outline-none h-20"
                                         placeholder="e.g. Friendly, aggressive, consultative..."
                                         value={localSettings.aboutMe}
-                                        onChange={(e) => setLocalSettings(prev => ({ ...prev, aboutMe: e.target.value }))}
+                                        onChange={(e) => updateLocal(prev => ({ ...prev, aboutMe: e.target.value }))}
                                     />
                                 </div>
                             </div>
@@ -281,7 +290,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                                                     const next = isChecked
                                                         ? current.filter(id => id !== status.id)
                                                         : [...current, status.id];
-                                                    setLocalSettings(prev => ({ ...prev, autopilotStatuses: next }));
+                                                    updateLocal(prev => ({ ...prev, autopilotStatuses: next }));
                                                 }}
                                                 className="accent-brand-500"
                                             />

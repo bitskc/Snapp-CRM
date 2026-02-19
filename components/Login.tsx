@@ -1,9 +1,11 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
 import { Loader2, Mail, Lock, UserPlus, LogIn, AlertCircle, CheckCircle2, Save } from 'lucide-react';
 
 export const Login: React.FC = () => {
+    const { isRecovery, clearRecovery } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -11,25 +13,12 @@ export const Login: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
 
-    React.useEffect(() => {
-        // Detect recovery mode from URL
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('mode') === 'recovery') {
+    // Enter recovery mode when AuthContext detects PASSWORD_RECOVERY event
+    useEffect(() => {
+        if (isRecovery) {
             setAuthMode('recovery');
         }
-
-        // Handle the hash fragment from Supabase reset link
-        if (window.location.hash.includes('type=recovery')) {
-            setAuthMode('recovery');
-        }
-    }, []);
-
-    React.useEffect(() => {
-        // Force logout if we're in recovery mode to ensure clean state
-        if (authMode === 'recovery') {
-            supabase.auth.signOut();
-        }
-    }, [authMode]);
+    }, [isRecovery]);
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -62,6 +51,7 @@ export const Login: React.FC = () => {
                 const { error } = await supabase.auth.updateUser({ password });
                 if (error) throw error;
                 setMessage('Password updated successfully! You can now sign in.');
+                clearRecovery();
                 setAuthMode('signin');
                 setPassword('');
             }

@@ -12,6 +12,8 @@ export interface Note {
   content: string;
   createdAt: string;
   author: string;
+  activityDate?: string;   // YYYY-MM-DD, defaults to today
+  activityType?: 'call' | 'email' | 'text' | 'in_person';
 }
 
 export interface Product {

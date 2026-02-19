@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Filter, RefreshCw, List, Kanban, CalendarClock, ChevronDown, Map as MapIcon, Upload, X } from 'lucide-react';
+import { Search, Filter, RefreshCw, List, Kanban, CalendarClock, ChevronDown, Map as MapIcon, Upload, X, Layers } from 'lucide-react';
 import { useDebounce } from '../hooks/useDebounce';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { KanbanBoard } from '../components/KanbanBoard';
@@ -29,6 +29,7 @@ export const DashboardPage: React.FC = () => {
 
     // Local state scoped to this page
     const [viewMode, setViewMode] = useState<'kanban' | 'list' | 'map'>('kanban');
+    const [kanbanGroupBy, setKanbanGroupBy] = useState<'status' | 'activity_date' | 'source'>('status');
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [searchFilter, setSearchFilter] = useState('');
     const debouncedSearch = useDebounce(searchFilter, 300);
@@ -317,6 +318,21 @@ export const DashboardPage: React.FC = () => {
                             <MapIcon size={18} />
                         </button>
                     </div>
+
+                    {viewMode === 'kanban' && (
+                        <div className="flex items-center gap-1.5">
+                            <Layers size={14} className="text-slate-500" />
+                            <select
+                                value={kanbanGroupBy}
+                                onChange={(e) => setKanbanGroupBy(e.target.value as 'status' | 'activity_date' | 'source')}
+                                className="bg-slate-900 border border-slate-800 text-slate-300 text-xs rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                            >
+                                <option value="status">Group by Status</option>
+                                <option value="activity_date">Group by Activity</option>
+                                <option value="source">Group by Source</option>
+                            </select>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -327,6 +343,7 @@ export const DashboardPage: React.FC = () => {
                         leads={filteredLeads}
                         onLeadClick={setSelectedLead}
                         onLeadStatusChange={updateLeadStatus}
+                        groupBy={kanbanGroupBy}
                     />
                 )}
                 {viewMode === 'list' && (

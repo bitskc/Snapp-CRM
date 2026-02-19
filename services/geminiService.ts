@@ -352,7 +352,7 @@ export const parseImportData = async (rawData: string): Promise<Partial<Lead>[]>
  * Generates social media posts.
  */
 export const generateSocialPost = async (
-  lead: Lead,
+  product: Product,
   platform: 'LINKEDIN' | 'TWITTER' | 'FACEBOOK' | 'YOUTUBE' | 'TIKTOK',
   settings: AppSettings
 ): Promise<{ content: string, rationale: string }> => {
@@ -360,18 +360,17 @@ export const generateSocialPost = async (
             You are a social media manager for "${settings.companyName}".
             Company Desc: ${settings.companyDescription}
             
-            Create a ${platform} post targeting the following prospect:
-            Prospect: ${lead.companyName}
-            Info: ${lead.description}
-            Location: ${lead.location}
+            Create a ${platform} post showcasing the following product/service:
+            Product: ${product.name}
+            Description: ${product.description}
             
-            The goal is to get their attention or showcase how we help companies like them.
+            The goal is to attract potential customers and showcase the value of this product/service.
             Adopt the tone appropriate for ${platform}.
             
             Return JSON:
             {
               "content": "The post text (include hashtags)",
-              "rationale": "Why this platform and tone works for this lead"
+              "rationale": "Why this platform and tone works for this product"
             }
           `;
 

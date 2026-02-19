@@ -17,7 +17,7 @@ import { GrowthLab } from './pages/GrowthLab';
 import { AutopilotPage } from './pages/Autopilot';
 
 const AppContent = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, isRecovery } = useAuth();
 
   if (loading) {
     return (
@@ -27,7 +27,7 @@ const AppContent = () => {
     );
   }
 
-  if (!user) {
+  if (!user || isRecovery) {
     return <Login />;
   }
 

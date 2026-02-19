@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { X, Phone, Mail, MapPin, Globe, Loader2, Sparkles, Send, Edit2, Save, ChevronLeft, ChevronRight, Copy, Tag, Stethoscope, Gauge, ArrowRight, Share2, Linkedin, Facebook, Twitter, Youtube, Video } from 'lucide-react';
+import { X, Phone, Mail, MapPin, Globe, Loader2, Sparkles, Send, Edit2, Save, ChevronLeft, ChevronRight, Copy, Tag, Stethoscope, Gauge, ArrowRight, Share2, Linkedin, Facebook, Twitter, Youtube, Video, Calendar, PhoneCall, MessageSquare, User } from 'lucide-react';
 import { Lead, LeadStatus, Note, AppSettings, Product } from '../types';
 import { addNoteToLead } from '../services/crmService';
 import { generateCallScript, generateEmail, analyzeLead, executePrescription, generateSocialPost } from '../services/geminiService';
@@ -31,6 +31,11 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   const [activeRightTab, setActiveRightTab] = useState<'notes' | 'ai' | 'marketing'>('notes');
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
+
+  // Activity / Note State
+  const [noteDate, setNoteDate] = useState(new Date().toISOString().split('T')[0]);
+  const [noteActivityType, setNoteActivityType] = useState<'call' | 'email' | 'text' | 'in_person' | ''>('');
+  const [selectedMarketingProduct, setSelectedMarketingProduct] = useState<string>('');
 
   // Deal Doctor State
   const [prescriptionInstructions, setPrescriptionInstructions] = useState('');
@@ -102,12 +107,19 @@ export const LeadModal: React.FC<LeadModalProps> = ({
     if (!newNote.trim()) return;
     setIsSaving(true);
     try {
-      const note = await addNoteToLead(activeLead.id, newNote);
+      const note = await addNoteToLead(
+        activeLead.id,
+        newNote,
+        noteDate || undefined,
+        noteActivityType || undefined
+      );
       const updated = { ...activeLead, notes: [...activeLead.notes, note] };
       setActiveLead(updated);
       await updateLead(updated);
       setHasChanges(false);
       setNewNote('');
+      setNoteDate(new Date().toISOString().split('T')[0]);
+      setNoteActivityType('');
     } catch (e) {
       console.error("Failed to add note", e);
       addToast("Failed to add note", "error");
@@ -148,10 +160,16 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   };
 
   const handleSocialPost = async (platform: 'LINKEDIN' | 'TWITTER' | 'FACEBOOK' | 'YOUTUBE' | 'TIKTOK') => {
+    if (!selectedMarketingProduct) {
+      addToast("Select a product first", "error");
+      return;
+    }
+    const product = products.find(p => p.id === selectedMarketingProduct);
+    if (!product) return;
     setIsGenerating(true);
     setActiveRightTab('marketing');
     try {
-      const result = await generateSocialPost(activeLead, platform, settings);
+      const result = await generateSocialPost(product, platform, settings);
       setGeneratedContent({ type: 'social', content: result.content, rationale: result.rationale });
     } finally {
       setIsGenerating(false);
@@ -551,6 +569,23 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                 )}
                 {activeLead.notes.map(note => (
                   <div key={note.id} className="bg-slate-900 p-3 rounded-lg border border-slate-700">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      {note.activityType && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium uppercase tracking-wide
+                          ${note.activityType === 'call' ? 'bg-green-900/30 text-green-400 border-green-800/50' :
+                            note.activityType === 'email' ? 'bg-blue-900/30 text-blue-400 border-blue-800/50' :
+                            note.activityType === 'text' ? 'bg-yellow-900/30 text-yellow-400 border-yellow-800/50' :
+                            'bg-purple-900/30 text-purple-400 border-purple-800/50'}`}
+                        >
+                          {note.activityType === 'in_person' ? 'In Person' : note.activityType}
+                        </span>
+                      )}
+                      {note.activityDate && (
+                        <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                          <Calendar size={10} /> {new Date(note.activityDate + 'T00:00:00').toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-slate-300">{note.content}</p>
                     <div className="flex justify-between mt-2">
                       <span className="text-xs text-slate-500">{new Date(note.createdAt).toLocaleString()}</span>
@@ -560,22 +595,55 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                 ))}
               </div>
 
-              <div className="relative">
-                <textarea
-                  value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Add a call note..."
-                  className="w-full p-3 pr-12 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none resize-none text-sm placeholder-slate-600"
-                  rows={3}
-                />
-                <button
-                  onClick={handleAddNote}
-                  disabled={isSaving || !newNote.trim()}
-                  className="absolute bottom-3 right-3 p-1.5 bg-brand-600 text-white rounded-md hover:bg-brand-700 disabled:opacity-50 transition-colors"
-                  aria-label="Add note"
-                >
-                  {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                </button>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <Calendar size={14} className="text-slate-500" />
+                    <input
+                      type="date"
+                      value={noteDate}
+                      onChange={(e) => setNoteDate(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded px-2 py-1 outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                  </div>
+                  <div className="flex gap-1">
+                    {([
+                      { value: 'call', label: 'Call', icon: PhoneCall },
+                      { value: 'email', label: 'Email', icon: Mail },
+                      { value: 'text', label: 'Text', icon: MessageSquare },
+                      { value: 'in_person', label: 'In Person', icon: User },
+                    ] as const).map(t => (
+                      <button
+                        key={t.value}
+                        onClick={() => setNoteActivityType(noteActivityType === t.value ? '' : t.value)}
+                        className={`px-2 py-1 rounded text-[10px] font-medium border transition-colors flex items-center gap-1
+                          ${noteActivityType === t.value
+                            ? 'bg-brand-600 border-brand-500 text-white'
+                            : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-600'}`}
+                        title={t.label}
+                      >
+                        <t.icon size={10} /> {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="relative">
+                  <textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Add a note..."
+                    className="w-full p-3 pr-12 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none resize-none text-sm placeholder-slate-600"
+                    rows={3}
+                  />
+                  <button
+                    onClick={handleAddNote}
+                    disabled={isSaving || !newNote.trim()}
+                    className="absolute bottom-3 right-3 p-1.5 bg-brand-600 text-white rounded-md hover:bg-brand-700 disabled:opacity-50 transition-colors"
+                    aria-label="Add note"
+                  >
+                    {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -662,85 +730,112 @@ export const LeadModal: React.FC<LeadModalProps> = ({
           )}
 
           {activeRightTab === 'marketing' && !generatedContent && (
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center">
-              <div className="text-center mt-6 mb-8">
-                <h3 className="text-lg font-bold text-white mb-2">Social Marketing</h3>
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col">
+              <div className="text-center mt-2 mb-4">
+                <h3 className="text-lg font-bold text-white mb-1">Product Marketing</h3>
                 <p className="text-slate-400 text-sm max-w-xs mx-auto">
-                  Generate platform-specific content to engage this lead on social media.
+                  Generate platform-specific content to promote a product or service.
                 </p>
               </div>
 
-              <div className="w-full grid grid-cols-1 gap-4">
-                <button
-                  onClick={() => handleSocialPost('LINKEDIN')}
-                  disabled={isGenerating}
-                  className="bg-blue-900/30 hover:bg-blue-900/50 border border-blue-800 p-4 rounded-xl flex items-center gap-4 transition-all group text-left"
-                >
-                  <div className="bg-blue-600 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
-                    <Linkedin size={24} />
+              {/* Product Selector */}
+              <div className="mb-5">
+                <label className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-2 block">Select Product</label>
+                {products.length === 0 ? (
+                  <p className="text-slate-600 text-xs">No products configured. Add products in Settings.</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2">
+                    {products.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => setSelectedMarketingProduct(p.id)}
+                        className={`text-left p-3 rounded-lg border transition-all text-sm
+                          ${selectedMarketingProduct === p.id
+                            ? 'bg-brand-600/20 border-brand-500 text-brand-300'
+                            : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'}`}
+                      >
+                        <span className="font-semibold">{p.name}</span>
+                        {p.description && <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{p.description}</p>}
+                      </button>
+                    ))}
                   </div>
-                  <div>
-                    <h4 className="text-slate-200 font-semibold text-sm">LinkedIn Professional</h4>
-                    <p className="text-slate-500 text-xs">B2B engagement & value proposition</p>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => handleSocialPost('TWITTER')}
-                  disabled={isGenerating}
-                  className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 transition-all group text-left"
-                >
-                  <div className="bg-black border border-slate-600 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
-                    <Twitter size={24} />
-                  </div>
-                  <div>
-                    <h4 className="text-slate-200 font-semibold text-sm">X / Twitter</h4>
-                    <p className="text-slate-500 text-xs">Short, snappy updates & tagging</p>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => handleSocialPost('FACEBOOK')}
-                  disabled={isGenerating}
-                  className="bg-blue-900/20 hover:bg-blue-900/40 border border-blue-900/50 p-4 rounded-xl flex items-center gap-4 transition-all group text-left"
-                >
-                  <div className="bg-blue-500 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
-                    <Facebook size={24} />
-                  </div>
-                  <div>
-                    <h4 className="text-slate-200 font-semibold text-sm">Facebook</h4>
-                    <p className="text-slate-500 text-xs">Community focused & visual</p>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => handleSocialPost('YOUTUBE')}
-                  disabled={isGenerating}
-                  className="bg-red-900/20 hover:bg-red-900/40 border border-red-900/50 p-4 rounded-xl flex items-center gap-4 transition-all group text-left"
-                >
-                  <div className="bg-red-600 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
-                    <Youtube size={24} />
-                  </div>
-                  <div>
-                    <h4 className="text-slate-200 font-semibold text-sm">YouTube Description</h4>
-                    <p className="text-slate-500 text-xs">Video content descriptions & SEO</p>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => handleSocialPost('TIKTOK')}
-                  disabled={isGenerating}
-                  className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 transition-all group text-left"
-                >
-                  <div className="bg-gradient-to-br from-cyan-400 to-pink-500 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
-                    <Video size={24} />
-                  </div>
-                  <div>
-                    <h4 className="text-slate-200 font-semibold text-sm">TikTok / Reels</h4>
-                    <p className="text-slate-500 text-xs">Short-form video scripts & captions</p>
-                  </div>
-                </button>
+                )}
               </div>
+
+              {/* Platform Buttons */}
+              {selectedMarketingProduct && (
+                <div className="w-full grid grid-cols-1 gap-3">
+                  <button
+                    onClick={() => handleSocialPost('LINKEDIN')}
+                    disabled={isGenerating}
+                    className="bg-blue-900/30 hover:bg-blue-900/50 border border-blue-800 p-3 rounded-xl flex items-center gap-3 transition-all group text-left"
+                  >
+                    <div className="bg-blue-600 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
+                      <Linkedin size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-slate-200 font-semibold text-sm">LinkedIn Professional</h4>
+                      <p className="text-slate-500 text-xs">B2B engagement & value proposition</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => handleSocialPost('TWITTER')}
+                    disabled={isGenerating}
+                    className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700 p-3 rounded-xl flex items-center gap-3 transition-all group text-left"
+                  >
+                    <div className="bg-black border border-slate-600 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
+                      <Twitter size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-slate-200 font-semibold text-sm">X / Twitter</h4>
+                      <p className="text-slate-500 text-xs">Short, snappy updates & tagging</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => handleSocialPost('FACEBOOK')}
+                    disabled={isGenerating}
+                    className="bg-blue-900/20 hover:bg-blue-900/40 border border-blue-900/50 p-3 rounded-xl flex items-center gap-3 transition-all group text-left"
+                  >
+                    <div className="bg-blue-500 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
+                      <Facebook size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-slate-200 font-semibold text-sm">Facebook</h4>
+                      <p className="text-slate-500 text-xs">Community focused & visual</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => handleSocialPost('YOUTUBE')}
+                    disabled={isGenerating}
+                    className="bg-red-900/20 hover:bg-red-900/40 border border-red-900/50 p-3 rounded-xl flex items-center gap-3 transition-all group text-left"
+                  >
+                    <div className="bg-red-600 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
+                      <Youtube size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-slate-200 font-semibold text-sm">YouTube Description</h4>
+                      <p className="text-slate-500 text-xs">Video content descriptions & SEO</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => handleSocialPost('TIKTOK')}
+                    disabled={isGenerating}
+                    className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700 p-3 rounded-xl flex items-center gap-3 transition-all group text-left"
+                  >
+                    <div className="bg-gradient-to-br from-cyan-400 to-pink-500 p-2 rounded-lg text-white group-hover:scale-110 transition-transform">
+                      <Video size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-slate-200 font-semibold text-sm">TikTok / Reels</h4>
+                      <p className="text-slate-500 text-xs">Short-form video scripts & captions</p>
+                    </div>
+                  </button>
+                </div>
+              )}
 
               {isGenerating && (
                 <div className="mt-8 flex items-center gap-2 text-slate-400 animate-pulse">

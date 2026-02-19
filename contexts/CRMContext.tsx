@@ -160,9 +160,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const saved = await saveSettings(newSettings);
             setSettings(saved);
             addToast("Settings saved successfully", "success");
-        } catch (e) {
+        } catch (e: any) {
+            const msg = e?.message || e?.toString() || 'Unknown error';
             console.error("Settings save error", e);
-            addToast("Failed to save settings", "error");
+            addToast(`Failed to save settings: ${msg}`, "error");
         }
     };
 

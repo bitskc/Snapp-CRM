@@ -12,7 +12,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   companyName: 'ServiceSnapp',
   companyDescription: 'The premier mobile Field Service Management (FSM) application for HVAC, Plumbing, and Electrical businesses.',
   aboutMe: 'Professional, helpful, and direct sales approach.',
-  sheetUrl: '',
   statuses: DEFAULT_STATUSES
 };
 
@@ -102,7 +101,9 @@ export const fetchLeads = async (page: number = 0, pageSize: number = 50): Promi
       id: n.id,
       content: n.content,
       createdAt: n.created_at,
-      author: 'User'
+      author: 'User',
+      activityDate: n.activity_date ?? undefined,
+      activityType: n.activity_type ?? undefined,
     })),
     productIds: (row.lead_products || []).map((lp: any) => lp.product_id)
   }));
@@ -384,18 +385,27 @@ export const saveEngagementOpportunity = async (opp: Partial<EngagementOpportuni
   return mapEngagementOpportunity(data);
 };
 
-export const addNoteToLead = async (leadId: string, content: string): Promise<Note> => {
+export const addNoteToLead = async (
+  leadId: string,
+  content: string,
+  activityDate?: string,
+  activityType?: 'call' | 'email' | 'text' | 'in_person'
+): Promise<Note> => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
+  const insertPayload: Record<string, unknown> = {
+    lead_id: leadId,
+    content,
+    type: 'MANUAL',
+    user_id: user.id,
+  };
+  if (activityDate) insertPayload.activity_date = activityDate;
+  if (activityType) insertPayload.activity_type = activityType;
+
   const { data, error } = await supabase
     .from('notes')
-    .insert({
-      lead_id: leadId,
-      content,
-      type: 'MANUAL',
-      user_id: user.id // Assign owner to note if schema supports, or rely on lead relation
-    })
+    .insert(insertPayload)
     .select()
     .single();
 
@@ -405,7 +415,9 @@ export const addNoteToLead = async (leadId: string, content: string): Promise<No
     id: data.id,
     content: data.content,
     createdAt: data.created_at,
-    author: 'User'
+    author: 'User',
+    activityDate: data.activity_date ?? undefined,
+    activityType: data.activity_type ?? undefined,
   };
 };
 
@@ -434,8 +446,10 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     companyDescription: data.company_description || '',
     aboutMe: data.about_me || '',
     statuses: data.statuses || DEFAULT_STATUSES,
-    sheetUrl: data.sheet_url || '',
-    autopilotStatuses: data.autopilot_statuses
+    // Only map optional columns when present in the DB response so the save
+    // payload won't reference columns that may not exist in older schemas.
+    ...('sheet_url' in data ? { sheetUrl: data.sheet_url || '' } : {}),
+    ...('autopilot_statuses' in data ? { autopilotStatuses: data.autopilot_statuses } : {})
   };
 };
 
@@ -443,22 +457,53 @@ export const saveSettings = async (settings: AppSettings): Promise<AppSettings> 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  const payload = {
-    user_id: user.id,
-    statuses: settings.statuses,
-    company_name: settings.companyName,
-    company_description: settings.companyDescription,
-    about_me: settings.aboutMe,
-    sheet_url: settings.sheetUrl,
-    autopilot_statuses: settings.autopilotStatuses,
+  // Live DB schema: id (integer, NOT NULL, no default/auto-increment),
+  // user_id, statuses, company_name, company_description, about_me,
+  // sheet_url, theme, updated_at.
+  // NOTE: autopilot_statuses does NOT exist in live DB.
+  const fields: Record<string, unknown> = {
+    statuses: settings.statuses ?? DEFAULT_STATUSES,
+    company_name: settings.companyName || null,
+    company_description: settings.companyDescription || null,
+    about_me: settings.aboutMe || null,
+    sheet_url: settings.sheetUrl ?? null,
     updated_at: new Date().toISOString()
   };
 
-  const { data, error } = await supabase
+  // Check if a row already exists for this user
+  const { data: existing } = await supabase
     .from('settings')
-    .upsert(payload, { onConflict: 'user_id' })
-    .select()
-    .single();
+    .select('id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  let data: any;
+  let error: any;
+
+  if (existing) {
+    // Update existing row
+    ({ data, error } = await supabase
+      .from('settings')
+      .update(fields)
+      .eq('id', existing.id)
+      .select()
+      .single());
+  } else {
+    // Insert new row — id is integer with no default, so we must provide one
+    const { data: maxRow } = await supabase
+      .from('settings')
+      .select('id')
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const nextId = (maxRow?.id ?? 0) + 1;
+
+    ({ data, error } = await supabase
+      .from('settings')
+      .insert({ id: nextId, ...fields, user_id: user.id })
+      .select()
+      .single());
+  }
 
   if (error) {
     console.error('Error saving settings:', error.message, error.details, error.hint);
@@ -466,9 +511,14 @@ export const saveSettings = async (settings: AppSettings): Promise<AppSettings> 
   }
 
   return {
-    ...settings,
     id: data.id,
-    user_id: data.user_id
+    user_id: data.user_id,
+    companyName: data.company_name || 'ServiceSnapp',
+    companyDescription: data.company_description || '',
+    aboutMe: data.about_me || '',
+    statuses: data.statuses || DEFAULT_STATUSES,
+    ...('sheet_url' in data ? { sheetUrl: data.sheet_url || '' } : {}),
+    ...('autopilot_statuses' in data ? { autopilotStatuses: data.autopilot_statuses } : {})
   };
 };
 
