@@ -26,7 +26,7 @@ const geocodeLocation = (location: string): Promise<{ lat: number, lon: number }
   if (geocodeCache[location]) return Promise.resolve(geocodeCache[location]);
 
   const result = new Promise<{ lat: number, lon: number } | null>((resolve) => {
-    geocodeChain = geocodeChain.catch(() => {}).then(async () => {
+    geocodeChain = geocodeChain.catch(() => { }).then(async () => {
       // Check cache again in case a queued request already resolved this location
       if (geocodeCache[location]) {
         resolve(geocodeCache[location]);
@@ -109,6 +109,86 @@ export const fetchLeads = async (page: number = 0, pageSize: number = 50): Promi
   }));
 
   return { leads, totalCount: count || 0 };
+};
+
+export const saveLeadsBulk = async (leads: Lead[]): Promise<void> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // Prepare lead data for bulk upsert
+  const leadsData = leads.map(lead => ({
+    id: lead.id && lead.id.length > 10 ? lead.id : undefined,
+    user_id: user.id,
+    company_name: lead.companyName,
+    contact_name: lead.contactName,
+    email: lead.email,
+    phone: lead.phone,
+    website: lead.website,
+    location: lead.location,
+    latitude: lead.latitude,
+    longitude: lead.longitude,
+    status: lead.status,
+    description: lead.description,
+    source: lead.source,
+    ai_analysis: lead.aiAnalysis,
+    match_score: lead.matchScore,
+    match_reason: lead.matchReason,
+    created_at: lead.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  }));
+
+  // Perform bulk upsert
+  const { data: savedLeads, error } = await supabase
+    .from('leads')
+    .upsert(leadsData)
+    .select('id');
+
+  if (error) {
+    console.error('Error saving leads bulk:', error);
+    throw error;
+  }
+
+  // Handle Note insertions in bulk if any have notes
+  const notesToInsert = leads.flatMap((lead, idx) => {
+    const savedId = (savedLeads as any[])[idx].id;
+    return (lead.notes || []).map(note => ({
+      lead_id: savedId,
+      content: note.content,
+      type: 'MANUAL',
+      user_id: user.id,
+      activity_date: note.activityDate,
+      activity_type: note.activityType,
+      created_at: note.createdAt || new Date().toISOString()
+    }));
+  });
+
+  if (notesToInsert.length > 0) {
+    const { error: notesError } = await supabase
+      .from('notes')
+      .insert(notesToInsert);
+    if (notesError) {
+      console.error('Error saving notes bulk:', notesError);
+      // We don't throw here to avoid failing the whole lead import
+    }
+  }
+
+  // Handle lead_products for leads that have them (less common in bulk import but possible)
+  const productLinks = leads.flatMap((lead, idx) => {
+    const savedId = (savedLeads as any[])[idx].id;
+    return (lead.productIds || []).map(pid => ({
+      lead_id: savedId,
+      product_id: pid
+    }));
+  });
+
+  if (productLinks.length > 0) {
+    const { error: productsError } = await supabase
+      .from('lead_products')
+      .insert(productLinks);
+    if (productsError) {
+      console.error('Error saving lead products bulk:', productsError);
+    }
+  }
 };
 
 export const saveLead = async (lead: Lead): Promise<Lead> => {

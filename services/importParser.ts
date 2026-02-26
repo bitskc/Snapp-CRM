@@ -121,7 +121,31 @@ const mapHeader = (header: string): LeadField | null => {
   return null;
 };
 
-export const parseImportText = (rawData: string): (Partial<Lead> & { _notes?: string })[] => {
+export interface RawCsvData {
+  headers: string[];
+  rows: string[][];
+  delimiter: string;
+}
+
+export const getRawCsvData = (text: string): RawCsvData | null => {
+  const records = splitRecords(text);
+  const firstNonEmpty = records.findIndex(l => l.trim().length > 0);
+  if (firstNonEmpty === -1) return null;
+
+  const delimiter = detectDelimiter(text);
+  const headers = parseRow(records[firstNonEmpty], delimiter);
+  const rows = records.slice(firstNonEmpty + 1)
+    .filter(r => r.trim().length > 0)
+    .slice(0, 5) // Get first 5 for preview
+    .map(r => parseRow(r, delimiter));
+
+  return { headers, rows, delimiter };
+};
+
+export const parseImportText = (
+  rawData: string,
+  manualMapping?: Record<string, LeadField> // Header -> Field
+): (Partial<Lead> & { _notes?: string })[] => {
   const records = splitRecords(rawData);
   const firstNonEmpty = records.findIndex(l => l.trim().length > 0);
   if (firstNonEmpty === -1) return [];
@@ -129,7 +153,13 @@ export const parseImportText = (rawData: string): (Partial<Lead> & { _notes?: st
   const delimiter = detectDelimiter(rawData);
   const headerCells = parseRow(records[firstNonEmpty], delimiter);
 
-  const columnMap: (LeadField | null)[] = headerCells.map(mapHeader);
+  let columnMap: (LeadField | null)[];
+
+  if (manualMapping) {
+    columnMap = headerCells.map(header => manualMapping[header] || null);
+  } else {
+    columnMap = headerCells.map(mapHeader);
+  }
 
   if (!columnMap.some(f => f !== null)) return [];
 
