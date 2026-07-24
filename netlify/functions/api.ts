@@ -63,17 +63,10 @@ const handleEvent = async (event: any, context: any) => {
 
     const rawPath = event.path.replace(/\/\.netlify\/functions\/api\/?/, '');
 
-    // Unauthenticated DB health check: reports connection source + read/write
-    // capability. Never returns secrets or user data.
+    // Unauthenticated DB health check: reports read/write capability only.
+    // Never returns secrets or user data.
     if (rawPath.replace(/\/$/, '') === 'health/db') {
-        const dbEnvKeys = Object.keys(process.env).filter(k => /DATABASE|NETLIFY_DB|POSTGRES|NEON|PG/i.test(k));
-        const source =
-            (process.env.NETLIFY_DATABASE_URL_UNPOOLED && 'NETLIFY_DATABASE_URL_UNPOOLED') ||
-            (process.env.NETLIFY_DATABASE_URL && 'NETLIFY_DATABASE_URL') ||
-            (process.env.NETLIFY_DB_URL && 'NETLIFY_DB_URL') ||
-            (process.env.DATABASE_URL && 'DATABASE_URL') ||
-            'none';
-        const result: Record<string, unknown> = { source, dbEnvKeys, canRead: false, canWrite: false };
+        const result: Record<string, unknown> = { canRead: false, canWrite: false };
         try {
             const sql = getSql();
             await sql`SELECT 1`;
