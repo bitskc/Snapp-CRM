@@ -1,4 +1,3 @@
-import { getDatabase, MissingDatabaseConnectionError } from '@netlify/database';
 import { neon } from '@neondatabase/serverless';
 
 const corsHeaders = {
@@ -21,22 +20,22 @@ const sendSlackWebhook = async (webhookUrl: string, payload: any) => {
 };
 
 const getSql = () => {
-    try {
-        const { sql } = getDatabase();
-        return sql;
-    } catch (err: any) {
-        const connStr = process.env.NETLIFY_DB_URL ||
-            process.env.NETLIFY_DATABASE_URL ||
-            process.env.DATABASE_URL ||
-            process.env.NETLIFY_DATABASE_URL_PRIMARY ||
-            process.env.POSTGRES_URL ||
-            process.env.DATABASE_URL_UNPOOLED;
-        if (connStr) {
-            return neon(connStr);
-        }
-        console.error('[DB Error] No database connection string found. Keys:', Object.keys(process.env).filter(k => !k.includes('KEY') && !k.includes('SECRET')));
-        throw err;
+    // Prefer the Neon extension's read-WRITE connection strings (injected by
+    // Netlify at build time on git-triggered deploys). Fall back to the
+    // read-only strings last so GETs still work even if write vars are absent.
+    const candidates: [string, string | undefined][] = [
+        ['NETLIFY_DATABASE_URL_UNPOOLED', process.env.NETLIFY_DATABASE_URL_UNPOOLED],
+        ['NETLIFY_DATABASE_URL', process.env.NETLIFY_DATABASE_URL],
+        ['NETLIFY_DB_URL', process.env.NETLIFY_DB_URL],
+        ['DATABASE_URL', process.env.DATABASE_URL],
+    ];
+    const chosen = candidates.find(([, v]) => v);
+    if (!chosen) {
+        console.error('[DB Error] No connection string. DB-related keys:', Object.keys(process.env).filter(k => /DATABASE|NETLIFY_DB|POSTGRES|NEON/i.test(k)));
+        throw new Error('No database connection string available in the function runtime.');
     }
+    console.log('[DB] Using connection source:', chosen[0]);
+    return neon(chosen[1] as string);
 };
 
 const getUserId = (event: any, context: any): string | null => {
