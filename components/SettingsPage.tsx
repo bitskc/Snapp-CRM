@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { Save, Sparkles, Plus, Trash2, Database, Loader2, Edit2, GripVertical, Check, Zap } from 'lucide-react';
+import { Save, Sparkles, Plus, Trash2, Database, Loader2, Edit2, GripVertical, Check, Zap, Key } from 'lucide-react';
 import {
     DndContext,
     closestCenter,
@@ -20,6 +20,9 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { AppSettings, Product, StatusConfig } from '../types';
 import { generateProductDescription } from '../services/geminiService';
+import { supabase } from '../services/supabaseClient';
+import { changeNetlifyEmail } from '../services/netlifyClient';
+import { testSlackWebhook } from '../services/crmService';
 import { useCRM } from '../contexts/CRMContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -54,12 +57,12 @@ const getStatusColorClass = (colorName: string) => {
 };
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }) => {
-    const { updateSettings, saveProduct, deleteProduct } = useCRM();
+    const { updateSettings, saveProduct, deleteProduct, addToast } = useCRM();
     const { user } = useAuth();
     const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
     const [isSaving, setIsSaving] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
-    const [activeTab, setActiveTab] = useState<'general' | 'products' | 'statuses'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'products' | 'statuses' | 'account'>('general');
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -68,7 +71,28 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
         })
     );
 
-    // Sync local state when external settings change, but only if user hasn't made unsaved edits
+    // Status State
+    const [newStatus, setNewStatus] = useState<Partial<StatusConfig>>({ color: 'blue' });
+    // Slack State
+    const [isTestingSlack, setIsTestingSlack] = useState(false);
+    const [showGeminiKey, setShowGeminiKey] = useState(false);
+
+    const handleTestSlack = async () => {
+        if (!localSettings.slackWebhookUrl) {
+            addToast("Please enter a Slack Webhook URL first", "error");
+            return;
+        }
+        setIsTestingSlack(true);
+        try {
+            await testSlackWebhook(localSettings.slackWebhookUrl);
+            addToast("Slack test message sent successfully!", "success");
+        } catch (err: any) {
+            addToast(`Slack test failed: ${err.message || err}`, "error");
+        } finally {
+            setIsTestingSlack(false);
+        }
+    };
+
     useEffect(() => {
         if (!isDirty) {
             setLocalSettings(settings);
@@ -79,6 +103,30 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
     const [newProduct, setNewProduct] = useState<Partial<Product>>({});
     const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+
+    // Account State
+    const [newEmail, setNewEmail] = useState('');
+    const [emailChangeState, setEmailChangeState] = useState<'idle' | 'saving' | 'sent'>('idle');
+    const [emailChangeError, setEmailChangeError] = useState<string | null>(null);
+
+    const handleChangeEmail = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setEmailChangeState('saving');
+        setEmailChangeError(null);
+        try {
+            if (import.meta.env.VITE_STORAGE_PROVIDER === 'supabase') {
+                const { error } = await supabase.auth.updateUser({ email: newEmail });
+                if (error) throw error;
+            } else {
+                await changeNetlifyEmail(newEmail);
+            }
+            setEmailChangeState('sent');
+            setNewEmail('');
+        } catch (err: any) {
+            setEmailChangeError(err.message || 'Failed to request email change');
+            setEmailChangeState('idle');
+        }
+    };
 
     // Status State
     const [newStatusLabel, setNewStatusLabel] = useState('');
@@ -200,6 +248,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                     >
                         Products & Services
                     </button>
+                    <button
+                        onClick={() => setActiveTab('account')}
+                        className={`pb-2 border-b-2 transition-colors ${activeTab === 'account' ? 'text-brand-400 border-brand-400' : 'border-transparent hover:text-slate-200'}`}
+                    >
+                        Account
+                    </button>
                 </div>
             </div>
 
@@ -228,6 +282,111 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                             </div>
                         </div>
 
+                        {/* Slack Connection */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+                                <Zap size={18} className="text-brand-400" /> Slack Channel Integration
+                            </h3>
+                            <p className="text-sm text-slate-400 mb-4">
+                                Receive real-time alerts in your Slack channel whenever new leads are captured or responses/notes are logged.
+                            </p>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">Slack Incoming Webhook URL</label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="url"
+                                            placeholder="https://hooks.slack.com/services/T.../B.../..."
+                                            className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:border-brand-500 outline-none font-mono text-xs"
+                                            value={localSettings.slackWebhookUrl || ''}
+                                            onChange={(e) => updateLocal(prev => ({ ...prev, slackWebhookUrl: e.target.value }))}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleTestSlack}
+                                            disabled={isTestingSlack}
+                                            className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium border border-slate-700 flex items-center gap-2 disabled:opacity-50"
+                                        >
+                                            {isTestingSlack ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
+                                            Test Webhook
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap gap-6 border-t border-slate-800/80 pt-4">
+                                    <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={localSettings.slackNotifyNewLead ?? true}
+                                            onChange={(e) => updateLocal(prev => ({ ...prev, slackNotifyNewLead: e.target.checked }))}
+                                            className="rounded border-slate-700 bg-slate-950 text-brand-500 focus:ring-brand-500"
+                                        />
+                                        Notify on New Leads
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={localSettings.slackNotifyNewNote ?? true}
+                                            onChange={(e) => updateLocal(prev => ({ ...prev, slackNotifyNewNote: e.target.checked }))}
+                                            className="rounded border-slate-700 bg-slate-950 text-brand-500 focus:ring-brand-500"
+                                        />
+                                        Notify on Lead Notes & Responses
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* BYOK API Keys */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+                                <Key size={18} className="text-amber-400" /> Bring Your Own Key (BYOK)
+                            </h3>
+                            <p className="text-sm text-slate-400 mb-4">
+                                Supply your personal Gemini/OpenAI/Anthropic API keys for lead generation and AI autopilot workflows.
+                            </p>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">Google Gemini API Key</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showGeminiKey ? "text" : "password"}
+                                            placeholder="AIzaSy..."
+                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:border-brand-500 outline-none font-mono text-xs pr-16"
+                                            value={localSettings.geminiApiKey || ''}
+                                            onChange={(e) => updateLocal(prev => ({ ...prev, geminiApiKey: e.target.value }))}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowGeminiKey(!showGeminiKey)}
+                                            className="absolute right-3 top-2 text-xs text-slate-400 hover:text-white"
+                                        >
+                                            {showGeminiKey ? 'Hide' : 'Show'}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-400 mb-1">OpenAI API Key (Optional)</label>
+                                        <input
+                                            type="password"
+                                            placeholder="sk-..."
+                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:border-brand-500 outline-none font-mono text-xs"
+                                            value={localSettings.openaiApiKey || ''}
+                                            onChange={(e) => updateLocal(prev => ({ ...prev, openaiApiKey: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-400 mb-1">Anthropic API Key (Optional)</label>
+                                        <input
+                                            type="password"
+                                            placeholder="sk-ant-..."
+                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:border-brand-500 outline-none font-mono text-xs"
+                                            value={localSettings.anthropicApiKey || ''}
+                                            onChange={(e) => updateLocal(prev => ({ ...prev, anthropicApiKey: e.target.value }))}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         {/* AI Training Info */}
                         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
                             <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
@@ -473,6 +632,52 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, products }
                                     )}
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'account' && (
+                    <div className="space-y-8">
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <Edit2 size={18} className="text-brand-400" /> Login Email
+                            </h3>
+                            <p className="text-sm text-slate-400 mb-4">
+                                Your current login email is <span className="text-slate-200 font-medium">{user?.email}</span>.
+                                Changing it sends a confirmation link to the new address — the change only takes effect after you click it.
+                            </p>
+                            {emailChangeState === 'sent' ? (
+                                <div className="flex items-center gap-2 text-emerald-400 text-sm bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20">
+                                    <Check size={16} />
+                                    <span>Confirmation email sent to your new address. Click the link in that email to complete the change.</span>
+                                </div>
+                            ) : (
+                                <form onSubmit={handleChangeEmail} className="space-y-3">
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="email"
+                                            required
+                                            value={newEmail}
+                                            onChange={(e) => setNewEmail(e.target.value)}
+                                            placeholder="new-email@example.com"
+                                            className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-brand-500 transition-colors"
+                                        />
+                                        <button
+                                            type="submit"
+                                            disabled={emailChangeState === 'saving'}
+                                            className="bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
+                                        >
+                                            {emailChangeState === 'saving' ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                                            Change Email
+                                        </button>
+                                    </div>
+                                    {emailChangeError && (
+                                        <div className="text-rose-400 text-sm bg-rose-500/10 p-3 rounded-lg border border-rose-500/20">
+                                            {emailChangeError}
+                                        </div>
+                                    )}
+                                </form>
+                            )}
                         </div>
                     </div>
                 )}

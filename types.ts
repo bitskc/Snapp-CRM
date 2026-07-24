@@ -32,6 +32,12 @@ export interface AppSettings {
   sheetUrl?: string;
   statuses: StatusConfig[];
   autopilotStatuses?: string[];
+  slackWebhookUrl?: string;
+  slackNotifyNewLead?: boolean;
+  slackNotifyNewNote?: boolean;
+  geminiApiKey?: string;
+  openaiApiKey?: string;
+  anthropicApiKey?: string;
 }
 
 export interface LeadAIAnalysis {

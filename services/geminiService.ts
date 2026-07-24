@@ -1,36 +1,75 @@
 import { supabase } from './supabaseClient';
+import { getAuthToken } from './netlifyClient';
 import { Lead, AppSettings, Product, LeadAIAnalysis, GrowthSettings, GrowthConcept, GrowthPost, EngagementOpportunity, AutopilotAction } from '../types';
 import { CompactLeadSummary } from '../utils/autopilotHelpers';
 
+const isSupabase = import.meta.env.VITE_STORAGE_PROVIDER === 'supabase';
+
 /**
- * Helper to call the secure AI Gateway Edge Function.
+ * Helper to call the secure AI Gateway Edge / Serverless Function.
  */
 const callGateway = async (action: string, payload: any) => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
+  // Automatically attach custom BYOK API key if available in settings
+  if (!payload.customApiKey) {
+    try {
+      const { fetchSettings } = await import('./crmService');
+      const settings = await fetchSettings();
+      if (settings?.geminiApiKey) {
+        payload.customApiKey = settings.geminiApiKey;
+      }
+    } catch { }
+  }
   try {
-    // Refresh session to ensure the client has a valid, non-expired token
-    const { data: { session }, error: sessionError } = await supabase.auth.refreshSession();
+    if (isSupabase) {
+      // Refresh session to ensure the client has a valid, non-expired token
+      const { data: { session }, error: sessionError } = await supabase.auth.refreshSession();
 
-    if (sessionError || !session) {
-      throw new Error('Session expired. Please sign in again.');
+      if (sessionError || !session) {
+        throw new Error('Session expired. Please sign in again.');
+      }
+
+      const { data, error } = await supabase.functions.invoke('ai-gateway', {
+        body: { action, payload },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (error) {
+        console.error(`AI Gateway Error (${action}):`, error);
+        throw new Error(error.message || `Failed to execute ${action}`);
+      }
+
+      return data.data;
+    } else {
+      const token = await getAuthToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch('/.netlify/functions/ai-gateway', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action, payload }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `AI Gateway Error (${res.status})`);
+      }
+
+      const data = await res.json();
+      return data.data;
     }
-
-    const { data, error } = await supabase.functions.invoke('ai-gateway', {
-      body: { action, payload },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (error) {
-      console.error(`AI Gateway Error (${action}):`, error);
-      // Attempt to parse error message from response if available
-      throw new Error(error.message || `Failed to execute ${action}`);
-    }
-
-    return data.data;
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {

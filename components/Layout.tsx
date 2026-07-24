@@ -59,7 +59,7 @@ export const Layout: FC<LayoutProps> = ({ children }) => {
 
         <nav className="p-4 space-y-2 flex-1">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/app')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'dashboard'
               ? 'bg-slate-800 text-brand-400 border border-slate-700'
               : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
@@ -143,14 +143,13 @@ export const Layout: FC<LayoutProps> = ({ children }) => {
       {/* Bottom Navigation for Mobile */}
       <nav className="md:hidden bg-slate-900 border-t border-slate-800 flex justify-around p-2 pb-safe z-30">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/app')}
           className={`flex flex-col items-center gap-1 p-2 rounded-lg text-xs font-medium transition-colors ${activeTab === 'dashboard' ? 'text-brand-400' : 'text-slate-500'
             }`}
         >
           <LayoutDashboard size={24} />
           Pipeline
         </button>
-
         <button
           onClick={() => navigate('/finder')}
           className={`flex flex-col items-center gap-1 p-2 rounded-lg text-xs font-medium transition-colors ${activeTab === 'finder' ? 'text-brand-400' : 'text-slate-500'
