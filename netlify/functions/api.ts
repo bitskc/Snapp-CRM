@@ -60,6 +60,31 @@ export const handler = async (event: any, context: any) => {
         return { statusCode: 200, headers: corsHeaders, body: '' };
     }
 
+    const rawPath = event.path.replace(/\/\.netlify\/functions\/api\/?/, '');
+
+    // Unauthenticated DB health check: reports connection source + read/write
+    // capability. Never returns secrets or user data.
+    if (rawPath.replace(/\/$/, '') === 'health/db') {
+        const source =
+            (process.env.NETLIFY_DATABASE_URL_UNPOOLED && 'NETLIFY_DATABASE_URL_UNPOOLED') ||
+            (process.env.NETLIFY_DATABASE_URL && 'NETLIFY_DATABASE_URL') ||
+            (process.env.NETLIFY_DB_URL && 'NETLIFY_DB_URL') ||
+            (process.env.DATABASE_URL && 'DATABASE_URL') ||
+            'none';
+        const result: Record<string, unknown> = { source, canRead: false, canWrite: false };
+        try {
+            const sql = getSql();
+            await sql`SELECT 1`;
+            result.canRead = true;
+            await sql`CREATE TABLE IF NOT EXISTS public._healthcheck (id INT PRIMARY KEY, ts TIMESTAMPTZ)`;
+            await sql`INSERT INTO public._healthcheck (id, ts) VALUES (1, NOW()) ON CONFLICT (id) DO UPDATE SET ts = NOW()`;
+            result.canWrite = true;
+        } catch (err: unknown) {
+            result.error = err instanceof Error ? err.message : String(err);
+        }
+        return { statusCode: 200, headers: corsHeaders, body: JSON.stringify(result) };
+    }
+
     const userId = getUserId(event, context);
     if (!userId) {
         return {
