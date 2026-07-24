@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { neon as netlifyNeon } from '@netlify/neon';
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -65,13 +66,14 @@ export const handler = async (event: any, context: any) => {
     // Unauthenticated DB health check: reports connection source + read/write
     // capability. Never returns secrets or user data.
     if (rawPath.replace(/\/$/, '') === 'health/db') {
+        const dbEnvKeys = Object.keys(process.env).filter(k => /DATABASE|NETLIFY_DB|POSTGRES|NEON|PG/i.test(k));
         const source =
             (process.env.NETLIFY_DATABASE_URL_UNPOOLED && 'NETLIFY_DATABASE_URL_UNPOOLED') ||
             (process.env.NETLIFY_DATABASE_URL && 'NETLIFY_DATABASE_URL') ||
             (process.env.NETLIFY_DB_URL && 'NETLIFY_DB_URL') ||
             (process.env.DATABASE_URL && 'DATABASE_URL') ||
             'none';
-        const result: Record<string, unknown> = { source, canRead: false, canWrite: false };
+        const result: Record<string, unknown> = { source, dbEnvKeys, canRead: false, canWrite: false, netlifyNeonWrite: false };
         try {
             const sql = getSql();
             await sql`SELECT 1`;
@@ -81,6 +83,15 @@ export const handler = async (event: any, context: any) => {
             result.canWrite = true;
         } catch (err: unknown) {
             result.error = err instanceof Error ? err.message : String(err);
+        }
+        // Test the official @netlify/neon client (auto-reads NETLIFY_DATABASE_URL)
+        try {
+            const nsql = netlifyNeon();
+            await nsql`CREATE TABLE IF NOT EXISTS public._healthcheck (id INT PRIMARY KEY, ts TIMESTAMPTZ)`;
+            await nsql`INSERT INTO public._healthcheck (id, ts) VALUES (2, NOW()) ON CONFLICT (id) DO UPDATE SET ts = NOW()`;
+            result.netlifyNeonWrite = true;
+        } catch (err: unknown) {
+            result.netlifyNeonError = err instanceof Error ? err.message : String(err);
         }
         return { statusCode: 200, headers: corsHeaders, body: JSON.stringify(result) };
     }
