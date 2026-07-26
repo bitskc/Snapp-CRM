@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { auth as netlifyAuth } from '../services/netlifyClient';
 import { useAuth } from '../contexts/AuthContext';
-import { Loader2, Mail, Lock, UserPlus, LogIn, AlertCircle, CheckCircle2, Save } from 'lucide-react';
+import { Loader2, Mail, Lock, UserPlus, LogIn, AlertCircle, CheckCircle2, Save, Github } from 'lucide-react';
 
 const isSupabase = import.meta.env.VITE_STORAGE_PROVIDER === 'supabase';
 
@@ -211,6 +211,12 @@ export const Login: React.FC = () => {
                         )}
                     </div>
                 </form>
+                <div className="text-center">
+                    <a href="https://github.com/bitskc/Snapp-CRM" target="_blank" rel="noopener noreferrer" aria-label="View source on GitHub" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors">
+                        <Github className="w-4 h-4" aria-hidden="true" />
+                        <span>View source</span>
+                    </a>
+                </div>
             </div>
         </div>
     );
