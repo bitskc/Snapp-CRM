@@ -1,37 +1,51 @@
-# Snapp-CRM
+# Snapp CRM
 
-Snapp-CRM is a Supabase-backed CRM with AI-assisted lead finding, Growth Lab workflows, and Autopilot sales planning.
+<img src="screenshot.png" alt="Snapp CRM — AI-assisted CRM for service businesses" width="600">
 
-## Prerequisites
+An AI-assisted CRM built for service businesses — automated lead generation, pipeline tracking, and sales planning. The CRM that does the data entry for you instead of making you do it.
 
-- Node.js 20+
-- A Supabase project
+**Live at [snappcrm.netlify.app](https://snappcrm.netlify.app)**
 
-## Local Development
+## Why this exists
 
-1. Install dependencies:
-   `npm install`
-2. Create local env file:
-   `cp .env.local.example .env.local`
-3. Set these required frontend variables in `.env.local`:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-4. Run the app:
-   `npm run dev`
+Most CRMs are designed for enterprise sales teams with dedicated sales ops. Service businesses don't have that. The owner is the sales team, the dispatcher, and the technician. They don't have time to log every call, update every stage, or manually research leads.
 
-## Backend Setup (Required for AI Features)
+Snapp CRM flips the model: instead of asking "did you update the CRM today?", it asks "what can I find for you?" The AI lead finder scans for potential customers, the Growth Lab suggests next actions, and Autopilot builds a sales plan you can actually follow.
 
-AI actions run through the Supabase Edge Function `ai-gateway` (not directly from the browser).
+## What it does
 
-1. Apply Supabase migrations in `supabase/migrations`.
-2. Deploy the edge function:
-   `npx supabase functions deploy ai-gateway`
-3. Set Gemini secret on Supabase:
-   `npx supabase secrets set GEMINI_API_KEY=your_actual_key`
+- **AI lead generation** — finds potential customers based on your business type and service area
+- **Kanban pipeline** — drag-and-drop lead tracking with custom stages
+- **Growth Lab** — guided workflows that suggest next actions for each lead
+- **Autopilot** — automated sales planning with task scheduling
+- **Map view** — leads plotted on an interactive map with territory visualization
+- **List view** — sortable, filterable lead list with bulk actions
+- **Multi-user** — Supabase auth with row-level security
 
-Detailed deployment steps: `DEPLOYMENT_INSTRUCTIONS.md`
+## How it's built
 
-## Build
+- **React 19 + TypeScript + Vite** — frontend with Tailwind CSS
+- **Supabase** — auth, Postgres database, row-level security, edge functions
+- **Google Gemini** — AI lead finding and suggestions, routed through Supabase Edge Functions (keys never reach the browser)
+- **Leaflet** — interactive map with custom markers
+- **Netlify** — static hosting + serverless functions
 
-- Production build: `npm run build`
-- Preview build: `npm run preview`
+The AI gateway is the interesting piece — all AI calls go through a Supabase Edge Function, so the Gemini API key stays server-side. The frontend never sees it. The function handles prompt construction, response parsing, and error recovery.
+
+## Run it locally
+
+```bash
+npm install
+cp .env.local.example .env.local   # Add your Supabase + Gemini keys
+npm run dev                         # http://localhost:5173
+```
+
+For AI features, deploy the edge function:
+```bash
+npx supabase functions deploy ai-gateway
+npx supabase secrets set GEMINI_API_KEY=your_key
+```
+
+## License
+
+Proprietary. All rights reserved.
