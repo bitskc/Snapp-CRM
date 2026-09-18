@@ -15,9 +15,7 @@
     "@google/generative-ai": "^0.24.1",
     "@neondatabase/serverless": "^1.1.0",
     "@netlify/database": "^1.1.0",
-    "@netlify/neon": "^0.1.2",
     "@supabase/supabase-js": "^2.95.3",
-    "drizzle-orm": "^1.0.0-beta.22",
     "gotrue-js": "^1.0.1",
     "lucide-react": "^0.564.0",
     "pg": "^8.18.0",
@@ -30,7 +28,6 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "drizzle-kit": "^1.0.0-beta.22",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

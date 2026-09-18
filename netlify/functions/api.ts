@@ -1,5 +1,5 @@
 import { neon } from '@neondatabase/serverless';
-import { neon as netlifyNeon } from '@netlify/neon';
+import { getDatabase } from '@netlify/database';
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -21,22 +21,22 @@ const sendSlackWebhook = async (webhookUrl: string, payload: any) => {
 };
 
 const getSql = () => {
-    // Prefer the Neon extension's read-WRITE connection strings (injected by
-    // Netlify at build time on git-triggered deploys). Fall back to the
-    // read-only strings last so GETs still work even if write vars are absent.
-    const candidates: [string, string | undefined][] = [
-        ['NETLIFY_DATABASE_URL_UNPOOLED', process.env.NETLIFY_DATABASE_URL_UNPOOLED],
-        ['NETLIFY_DATABASE_URL', process.env.NETLIFY_DATABASE_URL],
-        ['NETLIFY_DB_URL', process.env.NETLIFY_DB_URL],
-        ['DATABASE_URL', process.env.DATABASE_URL],
-    ];
-    const chosen = candidates.find(([, v]) => v);
-    if (!chosen) {
-        console.error('[DB Error] No connection string. DB-related keys:', Object.keys(process.env).filter(k => /DATABASE|NETLIFY_DB|POSTGRES|NEON/i.test(k)));
-        throw new Error('No database connection string available in the function runtime.');
+    // In modern Netlify Functions (default export), Netlify auto-populates the
+    // runtime with the read-WRITE connection string; getDatabase() resolves it.
+    // Fall back to explicit env vars for local dev / lambda-compat contexts.
+    try {
+        return neon(getDatabase().connectionString);
+    } catch {
+        const conn =
+            process.env.NETLIFY_DATABASE_URL_UNPOOLED ||
+            process.env.NETLIFY_DATABASE_URL ||
+            process.env.NETLIFY_DB_URL ||
+            process.env.DATABASE_URL;
+        if (!conn) {
+            throw new Error('No database connection string available in the function runtime.');
+        }
+        return neon(conn);
     }
-    console.log('[DB] Using connection source:', chosen[0]);
-    return neon(chosen[1] as string);
 };
 
 const getUserId = (event: any, context: any): string | null => {
@@ -56,24 +56,17 @@ const getUserId = (event: any, context: any): string | null => {
     return null;
 };
 
-export const handler = async (event: any, context: any) => {
+const handleEvent = async (event: any, context: any) => {
     if (event.httpMethod === 'OPTIONS') {
         return { statusCode: 200, headers: corsHeaders, body: '' };
     }
 
     const rawPath = event.path.replace(/\/\.netlify\/functions\/api\/?/, '');
 
-    // Unauthenticated DB health check: reports connection source + read/write
-    // capability. Never returns secrets or user data.
+    // Unauthenticated DB health check: reports read/write capability only.
+    // Never returns secrets or user data.
     if (rawPath.replace(/\/$/, '') === 'health/db') {
-        const dbEnvKeys = Object.keys(process.env).filter(k => /DATABASE|NETLIFY_DB|POSTGRES|NEON|PG/i.test(k));
-        const source =
-            (process.env.NETLIFY_DATABASE_URL_UNPOOLED && 'NETLIFY_DATABASE_URL_UNPOOLED') ||
-            (process.env.NETLIFY_DATABASE_URL && 'NETLIFY_DATABASE_URL') ||
-            (process.env.NETLIFY_DB_URL && 'NETLIFY_DB_URL') ||
-            (process.env.DATABASE_URL && 'DATABASE_URL') ||
-            'none';
-        const result: Record<string, unknown> = { source, dbEnvKeys, canRead: false, canWrite: false, netlifyNeonWrite: false };
+        const result: Record<string, unknown> = { canRead: false, canWrite: false };
         try {
             const sql = getSql();
             await sql`SELECT 1`;
@@ -83,15 +76,6 @@ export const handler = async (event: any, context: any) => {
             result.canWrite = true;
         } catch (err: unknown) {
             result.error = err instanceof Error ? err.message : String(err);
-        }
-        // Test the official @netlify/neon client (auto-reads NETLIFY_DATABASE_URL)
-        try {
-            const nsql = netlifyNeon();
-            await nsql`CREATE TABLE IF NOT EXISTS public._healthcheck (id INT PRIMARY KEY, ts TIMESTAMPTZ)`;
-            await nsql`INSERT INTO public._healthcheck (id, ts) VALUES (2, NOW()) ON CONFLICT (id) DO UPDATE SET ts = NOW()`;
-            result.netlifyNeonWrite = true;
-        } catch (err: unknown) {
-            result.netlifyNeonError = err instanceof Error ? err.message : String(err);
         }
         return { statusCode: 200, headers: corsHeaders, body: JSON.stringify(result) };
     }
@@ -660,4 +644,28 @@ export const handler = async (event: any, context: any) => {
         console.error('Database query error:', err);
         return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: err.message || 'Database error' }) };
     }
+};
+
+// Modern Netlify Function entrypoint (default export). Using this signature —
+// instead of the legacy `export const handler` (Lambda compatibility mode) —
+// is what makes Netlify auto-populate the runtime with the read-WRITE Netlify
+// Database connection string. We adapt the Web Request into the internal
+// event shape the handlers already expect.
+export default async (req: Request): Promise<Response> => {
+    const url = new URL(req.url);
+    const headers: Record<string, string> = {};
+    req.headers.forEach((value, key) => { headers[key] = value; });
+    const body = req.method === 'GET' || req.method === 'HEAD' ? '' : await req.text();
+    const event = {
+        httpMethod: req.method,
+        path: url.pathname,
+        queryStringParameters: Object.fromEntries(url.searchParams.entries()),
+        headers,
+        body,
+    };
+    const result = await handleEvent(event, {});
+    return new Response(result.body || '', {
+        status: result.statusCode,
+        headers: result.headers as Record<string, string>,
+    });
 };
